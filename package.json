@@ -1,0 +1,11 @@
+{
+  "name": "reaction",
+  "description": "",
+  "version": "0.0.1",
+  "main": "./js/src/index",
+  "dependencies": {
+    "named-function": "aleclarson/named-function#1.0.3",
+    "tracker": "aleclarson/tracker#1.0.8",
+    "type-utils": "aleclarson/type-utils#1.0.0"
+  }
+}
