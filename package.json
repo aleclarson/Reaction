@@ -2,9 +2,15 @@
   "name": "reaction",
   "description": "",
   "version": "0.0.1",
-  "main": "./js/src/index",
+  "main": "./js/src/Reaction",
   "dependencies": {
+    "define": "aleclarson/define#1.0.0",
+    "immutable": "^3.7.5",
+    "io": "aleclarson/io#1.0.0",
+    "lotus-log": "aleclarson/lotus-log#1.0.0",
     "named-function": "aleclarson/named-function#1.0.3",
+    "reactive-var": "aleclarson/reactive-var#1.0.6",
+    "steal": "aleclarson/steal#0.0.1",
     "tracker": "aleclarson/tracker#1.0.8",
     "type-utils": "aleclarson/type-utils#1.0.0"
   }
