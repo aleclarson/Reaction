@@ -42,12 +42,11 @@ Reaction = NamedFunction "Reaction", (options) ->
       __getNewValue: options.get
 
   if isType options.didSet, Function
-    reaction.addListener (newValue, oldValue) ->
-      options.didSet newValue, oldValue
+    reaction.addListener options.didSet
 
   if isType options.didChange, Function
     reaction.addListener (newValue, oldValue) ->
-      return if @_computation.firstRun or (newValue is oldValue)
+      return if reaction._computation.firstRun or (newValue is oldValue)
       options.didChange newValue, oldValue
 
   reaction.start() if Reaction.autoStart

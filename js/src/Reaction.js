@@ -55,13 +55,11 @@ Reaction = NamedFunction("Reaction", function(options) {
     });
   });
   if (isType(options.didSet, Function)) {
-    reaction.addListener(function(newValue, oldValue) {
-      return options.didSet(newValue, oldValue);
-    });
+    reaction.addListener(options.didSet);
   }
   if (isType(options.didChange, Function)) {
     reaction.addListener(function(newValue, oldValue) {
-      if (this._computation.firstRun || (newValue === oldValue)) {
+      if (reaction._computation.firstRun || (newValue === oldValue)) {
         return;
       }
       return options.didChange(newValue, oldValue);
