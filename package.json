@@ -11,6 +11,7 @@
     "io": "aleclarson/io#1.0.0",
     "lotus-log": "aleclarson/lotus-log#1.0.0",
     "lotus-require": "aleclarson/lotus-require#1.0.0",
+    "named-function": "aleclarson/named-function#1.0.3",
     "reactive-var": "aleclarson/reactive-var#1.0.6",
     "tracker": "aleclarson/tracker#1.0.8",
     "type-utils": "aleclarson/type-utils#1.0.0"
