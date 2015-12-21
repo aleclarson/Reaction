@@ -1,8 +1,8 @@
-var Factory, Immutable, Kind, NamedFunction, Reaction, ReactiveVar, Tracker, Void, assertType, configTypes, define, emptyFunction, isType, ref, setType, sync, validateTypes;
+var Immutable, Kind, NamedFunction, Reaction, ReactiveVar, Tracker, Void, assertType, configTypes, define, emptyFunction, isKind, isType, ref, setType, sync, validateTypes;
 
 require("lotus-require");
 
-ref = require("type-utils"), Void = ref.Void, Kind = ref.Kind, setType = ref.setType, isType = ref.isType, assertType = ref.assertType, validateTypes = ref.validateTypes;
+ref = require("type-utils"), Void = ref.Void, Kind = ref.Kind, isKind = ref.isKind, isType = ref.isType, setType = ref.setType, assertType = ref.assertType, validateTypes = ref.validateTypes;
 
 NamedFunction = require("named-function");
 
@@ -31,8 +31,8 @@ configTypes = {
 
 module.exports = Reaction = NamedFunction("Reaction", function(config, context) {
   var self;
-  assertType(config, [Object, Function], "config");
-  if (isType(config, Function)) {
+  assertType(config, [Object, Function.Kind], "config");
+  if (isKind(config, Function)) {
     config = {
       get: config
     };
@@ -59,7 +59,7 @@ module.exports = Reaction = NamedFunction("Reaction", function(config, context) 
       _computation: null,
       _listeners: Immutable.Set(),
       _context: {
-        value: context
+        value: config.context || context
       }
     });
     this.frozen = true;
@@ -156,7 +156,11 @@ define(Reaction, function() {
     configurable: false
   };
   this({
-    autoStart: true
+    autoStart: true,
+    sync: function(config) {
+      config.sync = true;
+      return Reaction(config);
+    }
   });
   this.enumerable = false;
   return this({

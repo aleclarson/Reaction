@@ -1,7 +1,9 @@
 
 require "lotus-require"
 
-{ Void, Kind, setType, isType, assertType, validateTypes } = require "type-utils"
+{ Void, Kind, isKind, isType,
+  setType, assertType, validateTypes } = require "type-utils"
+
 NamedFunction = require "named-function"
 emptyFunction = require "emptyFunction"
 ReactiveVar = require "reactive-var"
@@ -21,8 +23,8 @@ configTypes =
 
 module.exports =
 Reaction = NamedFunction "Reaction", (config, context) ->
-  assertType config, [ Object, Function ], "config"
-  if isType config, Function then config = { get: config }
+  assertType config, [ Object, Function.Kind ], "config"
+  if isKind config, Function then config = { get: config }
   else validateTypes config, configTypes
   self = setType {}, Reaction
   define self, ->
@@ -42,7 +44,7 @@ Reaction = NamedFunction "Reaction", (config, context) ->
       _computation: null
       _listeners: Immutable.Set()
       _context:
-        value: context
+        value: config.context or context
 
     @frozen = yes
     @
@@ -126,6 +128,10 @@ define Reaction, ->
   @options = configurable: no
   @
     autoStart: yes
+
+    sync: (config) ->
+      config.sync = yes
+      Reaction config
 
   @enumerable = no
   @
