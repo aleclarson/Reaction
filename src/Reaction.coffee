@@ -6,7 +6,6 @@ require "lotus-require"
 
 NamedFunction = require "named-function"
 emptyFunction = require "emptyFunction"
-ReactiveVar = require "reactive-var"
 Immutable = require "immutable"
 { sync } = require "io"
 Factory = require "factory"
@@ -16,6 +15,7 @@ define = require "define"
 configTypes =
   keyPath: [ String, Void ]
   sync: [ Boolean, Void ]
+  shouldGet: [ Function, Void ]
   get: Kind(Function)
   didSet: [ Function, Void ]
   firstRun: [ Boolean, Void ]
@@ -32,26 +32,31 @@ Reaction = NamedFunction "Reaction", (config, context) ->
     @options = configurable: no
     @
       keyPath: config.keyPath
-      value:
-        get: Reaction._getValue
-        set: Reaction._setValue
+      value: { get: Reaction._getValue }
 
     @enumerable = no
     @
-      _oldValue: null
-      _willNotify: no
+      _value: null
+      _change: null
       _stopped: yes
       _computation: null
-      _listeners: Immutable.Set()
-      _context:
-        value: config.context or context
+      _sync: config.sync ?= no
+      _firstRun: config.firstRun ?= yes
+      _needsChange: config.needsChange ?= yes
+      _willNotify: no
+      _listeners: Immutable.OrderedSet()
+      _context: { value: config.context ?= context }
 
     @frozen = yes
     @
-      _value: ReactiveVar()
-      _sync: config.sync ?= no
+      _dep: new Tracker.Dependency
+      _shouldGet: config.shouldGet ?= emptyFunction.thatReturnsTrue
+      _get: config.get
+      _didSet: config.didSet
+      _recordChange: Reaction._recordChange.bind self
+      _consumeChange: Reaction._consumeChange.bind self
       _notifyListener: Reaction._notifyListener.bind self
-      __getNewValue: config.get
+      _notifyListeners: Reaction._notifyListeners.bind self
 
     Reaction._init.call self, config
 
@@ -62,30 +67,7 @@ define Reaction.prototype, ->
     start: ->
       return unless @_stopped
       @_stopped = no
-
-      Tracker.autorun =>
-        @_computation = Tracker.currentComputation
-
-        # Synchronous computations are recomputed immediately upon invalidation.
-        @_computation.invalidate = Reaction._invalidateSync if @_sync
-
-        oldValue = @__getValue()
-        newValue = @__getNewValue.call @_context
-
-        # Avoid depending on `this.value` or anything listeners reference.
-        Tracker.nonreactive =>
-          @value = newValue
-
-          # Notify listeners in the same event loop as the invalidation.
-          if @_sync or @_computation.firstRun
-            return @_notifyListeners oldValue
-
-          # Otherwise, notify listeners in the next event loop.
-          unless @_willNotify
-            @_willNotify = yes
-            Tracker.afterFlush =>
-              @_willNotify = no
-              @_notifyListeners oldValue
+      Tracker.autorun @_recordChange
       return
 
     stop: ->
@@ -96,6 +78,7 @@ define Reaction.prototype, ->
       return
 
     addListener: (listener) ->
+      assertType listener, Function
       @_listeners = @_listeners.add listener
       return
 
@@ -103,25 +86,11 @@ define Reaction.prototype, ->
       @_listeners = @_listeners.delete listener
       return
 
-    fork: (config) ->
-      assertType config, [ Object, Function ]
-      transform = emptyFunction.thatReturnsArgument
-      if isType config, Function
-        transform = config
-        config = {}
-      config.get = => transform @value
-      Reaction config
-
   @enumerable = no
   @
-    # Avoids triggering Tracker.Dependency.depend()
-    __getValue: ->
-      @_value.curValue
-
-    _notifyListeners: (oldValue) ->
-      @_oldValue = oldValue
-      @_listeners.forEach @_notifyListener
-      @_oldValue = null
+    _enqueueChange: (oldValue, newValue) ->
+      @_change = { oldValue, newValue }
+      Tracker.nonreactive @_consumeChange
 
 define Reaction, ->
 
@@ -130,33 +99,62 @@ define Reaction, ->
     autoStart: yes
 
     sync: (config) ->
+      config = get: config if isType config, Function
       config.sync = yes
       Reaction config
 
   @enumerable = no
   @
     _getValue: ->
-      # Prevent infinite loops. The reaction should not depend on its own value.
-      return @__getValue() if @_computation is Tracker.currentComputation
-      @_value.get()
+      @_dep.depend() if Tracker.active and (@_computation isnt Tracker.currentComputation)
+      @_value
 
-    _setValue: (newValue) ->
-      @_value.set newValue
+    _recordChange: ->
 
-    _init: (config) ->
-      config.firstRun ?= yes
-      config.needsChange ?= yes
-      if config.didSet?
-        @addListener (newValue, oldValue) =>
-          return if (config.firstRun is no) and @_computation.firstRun
-          return if (config.needsChange is yes) and (newValue is oldValue)
-          config.didSet.call @_context, newValue, oldValue
-      config.autoStart ?= Reaction.autoStart
-      @start() if config.autoStart
+      if Tracker.active and not @_computation?
+        @_computation = Tracker.currentComputation
+        @_computation._sync = @_sync
 
-    _invalidateSync: ->
-      @invalidated = yes
-      @_recompute()
+      return unless @_shouldGet.call @_context
+
+      oldValue = @_value
+      newValue = @_get.call @_context
+
+      # Some reactions need the value to differ for a change to be recognized.
+      return if @_needsChange and (newValue is oldValue)
+      @_enqueueChange oldValue, newValue
+
+    _consumeChange: ->
+
+      @_value = @_change.newValue
+      @_dep.changed()
+
+      # Some reactions wait for a change before their first run.
+      return unless @_firstRun or not @_computation.firstRun
+
+      # Listeners are called immediately on the first run.
+      # Synchronous reactions always call listeners immediately.
+      if @_sync or @_computation.firstRun
+        return @_notifyListeners()
+
+      return if @_willNotify
+      @_willNotify = yes
+      Tracker.afterFlush @_notifyListeners
+
+    _notifyListeners: ->
+      @_willNotify = no
+      @_listeners.forEach @_notifyListener
+      @_change = null
 
     _notifyListener: (listener) ->
-      listener.call this, @value, @_oldValue
+      listener.call this, @_change.newValue, @_change.oldValue
+      yes
+
+    _init: (config) ->
+
+      if @_didSet?
+        @addListener =>
+          @_didSet.apply @_context, arguments
+
+      config.autoStart ?= Reaction.autoStart
+      @start() if config.autoStart

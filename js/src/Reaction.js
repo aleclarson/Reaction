@@ -1,4 +1,4 @@
-var Immutable, Kind, NamedFunction, Reaction, ReactiveVar, Tracker, Void, assertType, configTypes, define, emptyFunction, isKind, isType, ref, setType, sync, validateTypes;
+var Factory, Immutable, Kind, NamedFunction, Reaction, Tracker, Void, assertType, configTypes, define, emptyFunction, isKind, isType, ref, setType, sync, validateTypes;
 
 require("lotus-require");
 
@@ -7,8 +7,6 @@ ref = require("type-utils"), Void = ref.Void, Kind = ref.Kind, isKind = ref.isKi
 NamedFunction = require("named-function");
 
 emptyFunction = require("emptyFunction");
-
-ReactiveVar = require("reactive-var");
 
 Immutable = require("immutable");
 
@@ -23,6 +21,7 @@ define = require("define");
 configTypes = {
   keyPath: [String, Void],
   sync: [Boolean, Void],
+  shouldGet: [Function, Void],
   get: Kind(Function),
   didSet: [Function, Void],
   firstRun: [Boolean, Void],
@@ -47,27 +46,34 @@ module.exports = Reaction = NamedFunction("Reaction", function(config, context) 
     this({
       keyPath: config.keyPath,
       value: {
-        get: Reaction._getValue,
-        set: Reaction._setValue
+        get: Reaction._getValue
       }
     });
     this.enumerable = false;
     this({
-      _oldValue: null,
-      _willNotify: false,
+      _value: null,
+      _change: null,
       _stopped: true,
       _computation: null,
-      _listeners: Immutable.Set(),
+      _sync: config.sync != null ? config.sync : config.sync = false,
+      _firstRun: config.firstRun != null ? config.firstRun : config.firstRun = true,
+      _needsChange: config.needsChange != null ? config.needsChange : config.needsChange = true,
+      _willNotify: false,
+      _listeners: Immutable.OrderedSet(),
       _context: {
-        value: config.context || context
+        value: config.context != null ? config.context : config.context = context
       }
     });
     this.frozen = true;
     this({
-      _value: ReactiveVar(),
-      _sync: config.sync != null ? config.sync : config.sync = false,
+      _dep: new Tracker.Dependency,
+      _shouldGet: config.shouldGet != null ? config.shouldGet : config.shouldGet = emptyFunction.thatReturnsTrue,
+      _get: config.get,
+      _didSet: config.didSet,
+      _recordChange: Reaction._recordChange.bind(self),
+      _consumeChange: Reaction._consumeChange.bind(self),
       _notifyListener: Reaction._notifyListener.bind(self),
-      __getNewValue: config.get
+      _notifyListeners: Reaction._notifyListeners.bind(self)
     });
     return Reaction._init.call(self, config);
   });
@@ -83,30 +89,7 @@ define(Reaction.prototype, function() {
         return;
       }
       this._stopped = false;
-      Tracker.autorun((function(_this) {
-        return function() {
-          var newValue, oldValue;
-          _this._computation = Tracker.currentComputation;
-          if (_this._sync) {
-            _this._computation.invalidate = Reaction._invalidateSync;
-          }
-          oldValue = _this.__getValue();
-          newValue = _this.__getNewValue.call(_this._context);
-          return Tracker.nonreactive(function() {
-            _this.value = newValue;
-            if (_this._sync || _this._computation.firstRun) {
-              return _this._notifyListeners(oldValue);
-            }
-            if (!_this._willNotify) {
-              _this._willNotify = true;
-              return Tracker.afterFlush(function() {
-                _this._willNotify = false;
-                return _this._notifyListeners(oldValue);
-              });
-            }
-          });
-        };
-      })(this));
+      Tracker.autorun(this._recordChange);
     },
     stop: function() {
       if (this._stopped) {
@@ -117,36 +100,21 @@ define(Reaction.prototype, function() {
       this._computation = null;
     },
     addListener: function(listener) {
+      assertType(listener, Function);
       this._listeners = this._listeners.add(listener);
     },
     removeListener: function(listener) {
       this._listeners = this._listeners["delete"](listener);
-    },
-    fork: function(config) {
-      var transform;
-      assertType(config, [Object, Function]);
-      transform = emptyFunction.thatReturnsArgument;
-      if (isType(config, Function)) {
-        transform = config;
-        config = {};
-      }
-      config.get = (function(_this) {
-        return function() {
-          return transform(_this.value);
-        };
-      })(this);
-      return Reaction(config);
     }
   });
   this.enumerable = false;
   return this({
-    __getValue: function() {
-      return this._value.curValue;
-    },
-    _notifyListeners: function(oldValue) {
-      this._oldValue = oldValue;
-      this._listeners.forEach(this._notifyListener);
-      return this._oldValue = null;
+    _enqueueChange: function(oldValue, newValue) {
+      this._change = {
+        oldValue: oldValue,
+        newValue: newValue
+      };
+      return Tracker.nonreactive(this._consumeChange);
     }
   });
 });
@@ -158,6 +126,11 @@ define(Reaction, function() {
   this({
     autoStart: true,
     sync: function(config) {
+      if (isType(config, Function)) {
+        config = {
+          get: config
+        };
+      }
       config.sync = true;
       return Reaction(config);
     }
@@ -165,31 +138,56 @@ define(Reaction, function() {
   this.enumerable = false;
   return this({
     _getValue: function() {
-      if (this._computation === Tracker.currentComputation) {
-        return this.__getValue();
+      if (Tracker.active && (this._computation !== Tracker.currentComputation)) {
+        this._dep.depend();
       }
-      return this._value.get();
+      return this._value;
     },
-    _setValue: function(newValue) {
-      return this._value.set(newValue);
+    _recordChange: function() {
+      var newValue, oldValue;
+      if (Tracker.active && (this._computation == null)) {
+        this._computation = Tracker.currentComputation;
+        this._computation._sync = this._sync;
+      }
+      if (!this._shouldGet.call(this._context)) {
+        return;
+      }
+      oldValue = this._value;
+      newValue = this._get.call(this._context);
+      if (this._needsChange && (newValue === oldValue)) {
+        return;
+      }
+      return this._enqueueChange(oldValue, newValue);
+    },
+    _consumeChange: function() {
+      this._value = this._change.newValue;
+      this._dep.changed();
+      if (!(this._firstRun || !this._computation.firstRun)) {
+        return;
+      }
+      if (this._sync || this._computation.firstRun) {
+        return this._notifyListeners();
+      }
+      if (this._willNotify) {
+        return;
+      }
+      this._willNotify = true;
+      return Tracker.afterFlush(this._notifyListeners);
+    },
+    _notifyListeners: function() {
+      this._willNotify = false;
+      this._listeners.forEach(this._notifyListener);
+      return this._change = null;
+    },
+    _notifyListener: function(listener) {
+      listener.call(this, this._change.newValue, this._change.oldValue);
+      return true;
     },
     _init: function(config) {
-      if (config.firstRun == null) {
-        config.firstRun = true;
-      }
-      if (config.needsChange == null) {
-        config.needsChange = true;
-      }
-      if (config.didSet != null) {
+      if (this._didSet != null) {
         this.addListener((function(_this) {
-          return function(newValue, oldValue) {
-            if ((config.firstRun === false) && _this._computation.firstRun) {
-              return;
-            }
-            if ((config.needsChange === true) && (newValue === oldValue)) {
-              return;
-            }
-            return config.didSet.call(_this._context, newValue, oldValue);
+          return function() {
+            return _this._didSet.apply(_this._context, arguments);
           };
         })(this));
       }
@@ -199,13 +197,6 @@ define(Reaction, function() {
       if (config.autoStart) {
         return this.start();
       }
-    },
-    _invalidateSync: function() {
-      this.invalidated = true;
-      return this._recompute();
-    },
-    _notifyListener: function(listener) {
-      return listener.call(this, this.value, this._oldValue);
     }
   });
 });
