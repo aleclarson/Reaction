@@ -1,18 +1,16 @@
-var Factory, Immutable, Kind, NamedFunction, Reaction, Tracker, Void, assertType, configTypes, define, emptyFunction, isKind, isType, ref, setType, sync, validateTypes;
+var Immutable, Kind, NamedFunction, Reaction, Tracker, Void, assertType, configTypes, define, emptyFunction, isKind, isType, ref, setType, sync, validateTypes;
 
 require("lotus-require");
 
 ref = require("type-utils"), Void = ref.Void, Kind = ref.Kind, isKind = ref.isKind, isType = ref.isType, setType = ref.setType, assertType = ref.assertType, validateTypes = ref.validateTypes;
+
+sync = require("io").sync;
 
 NamedFunction = require("named-function");
 
 emptyFunction = require("emptyFunction");
 
 Immutable = require("immutable");
-
-sync = require("io").sync;
-
-Factory = require("factory");
 
 Tracker = require("tracker");
 
@@ -70,6 +68,7 @@ module.exports = Reaction = NamedFunction("Reaction", function(config, context) 
       _shouldGet: config.shouldGet != null ? config.shouldGet : config.shouldGet = emptyFunction.thatReturnsTrue,
       _get: config.get,
       _didSet: config.didSet,
+      _changeQueue: config.changeQueue != null ? config.changeQueue : config.changeQueue = Tracker.nonreactive,
       _recordChange: Reaction._recordChange.bind(self),
       _consumeChange: Reaction._consumeChange.bind(self),
       _notifyListener: Reaction._notifyListener.bind(self),
@@ -114,7 +113,7 @@ define(Reaction.prototype, function() {
         oldValue: oldValue,
         newValue: newValue
       };
-      return Tracker.nonreactive(this._consumeChange);
+      return this._changeQueue(this._consumeChange);
     }
   });
 });
@@ -137,6 +136,21 @@ define(Reaction, function() {
   });
   this.enumerable = false;
   return this({
+    _init: function(config) {
+      if (this._didSet != null) {
+        this.addListener((function(_this) {
+          return function() {
+            return _this._didSet.apply(_this._context, arguments);
+          };
+        })(this));
+      }
+      if (config.autoStart == null) {
+        config.autoStart = Reaction.autoStart;
+      }
+      if (config.autoStart) {
+        return this.start();
+      }
+    },
     _getValue: function() {
       if (Tracker.active && (this._computation !== Tracker.currentComputation)) {
         this._dep.depend();
@@ -182,21 +196,6 @@ define(Reaction, function() {
     _notifyListener: function(listener) {
       listener.call(this, this._change.newValue, this._change.oldValue);
       return true;
-    },
-    _init: function(config) {
-      if (this._didSet != null) {
-        this.addListener((function(_this) {
-          return function() {
-            return _this._didSet.apply(_this._context, arguments);
-          };
-        })(this));
-      }
-      if (config.autoStart == null) {
-        config.autoStart = Reaction.autoStart;
-      }
-      if (config.autoStart) {
-        return this.start();
-      }
     }
   });
 });

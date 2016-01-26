@@ -1,14 +1,12 @@
 
 require "lotus-require"
 
-{ Void, Kind, isKind, isType,
-  setType, assertType, validateTypes } = require "type-utils"
+{ Void, Kind, isKind, isType, setType, assertType, validateTypes } = require "type-utils"
+{ sync } = require "io"
 
 NamedFunction = require "named-function"
 emptyFunction = require "emptyFunction"
 Immutable = require "immutable"
-{ sync } = require "io"
-Factory = require "factory"
 Tracker = require "tracker"
 define = require "define"
 
@@ -23,10 +21,17 @@ configTypes =
 
 module.exports =
 Reaction = NamedFunction "Reaction", (config, context) ->
+
   assertType config, [ Object, Function.Kind ], "config"
-  if isKind config, Function then config = { get: config }
-  else validateTypes config, configTypes
+
+  if isKind config, Function
+    config = { get: config }
+
+  else # if __DEV__
+    validateTypes config, configTypes
+
   self = setType {}, Reaction
+
   define self, ->
 
     @options = configurable: no
@@ -53,6 +58,7 @@ Reaction = NamedFunction "Reaction", (config, context) ->
       _shouldGet: config.shouldGet ?= emptyFunction.thatReturnsTrue
       _get: config.get
       _didSet: config.didSet
+      _changeQueue: config.changeQueue ?= Tracker.nonreactive
       _recordChange: Reaction._recordChange.bind self
       _consumeChange: Reaction._consumeChange.bind self
       _notifyListener: Reaction._notifyListener.bind self
@@ -90,7 +96,7 @@ define Reaction.prototype, ->
   @
     _enqueueChange: (oldValue, newValue) ->
       @_change = { oldValue, newValue }
-      Tracker.nonreactive @_consumeChange
+      @_changeQueue @_consumeChange
 
 define Reaction, ->
 
@@ -105,6 +111,15 @@ define Reaction, ->
 
   @enumerable = no
   @
+    _init: (config) ->
+
+      if @_didSet?
+        @addListener =>
+          @_didSet.apply @_context, arguments
+
+      config.autoStart ?= Reaction.autoStart
+      @start() if config.autoStart
+
     _getValue: ->
       @_dep.depend() if Tracker.active and (@_computation isnt Tracker.currentComputation)
       @_value
@@ -149,12 +164,3 @@ define Reaction, ->
     _notifyListener: (listener) ->
       listener.call this, @_change.newValue, @_change.oldValue
       yes
-
-    _init: (config) ->
-
-      if @_didSet?
-        @addListener =>
-          @_didSet.apply @_context, arguments
-
-      config.autoStart ?= Reaction.autoStart
-      @start() if config.autoStart
