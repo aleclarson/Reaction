@@ -1,8 +1,8 @@
-var Immutable, Kind, NamedFunction, Reaction, Tracker, Void, assertType, configTypes, define, emptyFunction, isKind, isType, ref, setType, sync, validateTypes;
+var Immutable, Kind, NamedFunction, Reaction, Tracker, Void, assert, assertType, configTypes, define, emptyFunction, isType, ref, setType, sync, validateTypes;
 
 require("lotus-require");
 
-ref = require("type-utils"), Void = ref.Void, Kind = ref.Kind, isKind = ref.isKind, isType = ref.isType, setType = ref.setType, assertType = ref.assertType, validateTypes = ref.validateTypes;
+ref = require("type-utils"), Void = ref.Void, Kind = ref.Kind, isType = ref.isType, setType = ref.setType, assert = ref.assert, assertType = ref.assertType, validateTypes = ref.validateTypes;
 
 sync = require("io").sync;
 
@@ -19,17 +19,18 @@ define = require("define");
 configTypes = {
   keyPath: [String, Void],
   sync: [Boolean, Void],
-  shouldGet: [Function, Void],
+  willGet: [Function, Void],
   get: Kind(Function),
+  willSet: [Function, Void],
   didSet: [Function, Void],
   firstRun: [Boolean, Void],
   needsChange: [Boolean, Void]
 };
 
-module.exports = Reaction = NamedFunction("Reaction", function(config, context) {
+module.exports = Reaction = NamedFunction("Reaction", function(config) {
   var self;
-  assertType(config, [Object, Function.Kind], "config");
-  if (isKind(config, Function)) {
+  assertType(config, [Object, configTypes.get], "config");
+  if (isType(config, configTypes.get)) {
     config = {
       get: config
     };
@@ -42,37 +43,35 @@ module.exports = Reaction = NamedFunction("Reaction", function(config, context) 
       configurable: false
     };
     this({
-      keyPath: config.keyPath,
       value: {
         get: Reaction._getValue
+      },
+      keyPath: {
+        value: config.keyPath,
+        didSet: function(keyPath) {
+          var ref1;
+          return (ref1 = this._computation) != null ? ref1.keyPath = keyPath : void 0;
+        }
       }
     });
     this.enumerable = false;
     this({
       _value: null,
-      _change: null,
       _stopped: true,
       _computation: null,
       _sync: config.sync != null ? config.sync : config.sync = false,
       _firstRun: config.firstRun != null ? config.firstRun : config.firstRun = true,
       _needsChange: config.needsChange != null ? config.needsChange : config.needsChange = true,
       _willNotify: false,
-      _listeners: Immutable.OrderedSet(),
-      _context: {
-        value: config.context != null ? config.context : config.context = context
-      }
+      _listeners: Immutable.OrderedSet()
     });
     this.frozen = true;
     this({
       _dep: new Tracker.Dependency,
-      _shouldGet: config.shouldGet != null ? config.shouldGet : config.shouldGet = emptyFunction.thatReturnsTrue,
+      _willGet: config.willGet != null ? config.willGet : config.willGet = emptyFunction.thatReturnsTrue,
       _get: config.get,
-      _didSet: config.didSet,
-      _changeQueue: config.changeQueue != null ? config.changeQueue : config.changeQueue = Tracker.nonreactive,
-      _recordChange: Reaction._recordChange.bind(self),
-      _consumeChange: Reaction._consumeChange.bind(self),
-      _notifyListener: Reaction._notifyListener.bind(self),
-      _notifyListeners: Reaction._notifyListeners.bind(self)
+      _willSet: config.willSet != null ? config.willSet : config.willSet = emptyFunction.thatReturnsTrue,
+      _didSet: config.didSet
     });
     return Reaction._init.call(self, config);
   });
@@ -88,7 +87,12 @@ define(Reaction.prototype, function() {
         return;
       }
       this._stopped = false;
-      Tracker.autorun(this._recordChange);
+      this._computation = new Tracker.Computation({
+        keyPath: this.keyPath,
+        func: this._recordChange.bind(this),
+        sync: this._sync
+      });
+      this._computation.start();
     },
     stop: function() {
       if (this._stopped) {
@@ -108,12 +112,54 @@ define(Reaction.prototype, function() {
   });
   this.enumerable = false;
   return this({
-    _enqueueChange: function(oldValue, newValue) {
-      this._change = {
-        oldValue: oldValue,
-        newValue: newValue
-      };
-      return this._changeQueue(this._consumeChange);
+    _recordChange: function() {
+      var newValue, oldValue;
+      assert(Tracker.active, "Tracker must be active!");
+      if (!this._willGet()) {
+        return;
+      }
+      oldValue = this._value;
+      newValue = this._get();
+      if (!this._computation.firstRun) {
+        if (this._needsChange && (newValue === oldValue)) {
+          return;
+        }
+      }
+      return Tracker.nonreactive((function(_this) {
+        return function() {
+          return _this._consumeChange(newValue, oldValue);
+        };
+      })(this));
+    },
+    _consumeChange: function(newValue, oldValue) {
+      if (!this._willSet(newValue, oldValue)) {
+        return;
+      }
+      this._value = newValue;
+      this._dep.changed();
+      if (!(this._firstRun || !this._computation.firstRun)) {
+        return;
+      }
+      if (this._sync || this._computation.firstRun) {
+        this._listeners.forEach(function(listener) {
+          listener(newValue, oldValue);
+          return true;
+        });
+        return;
+      }
+      if (this._willNotify) {
+        return;
+      }
+      this._willNotify = true;
+      return Tracker.afterFlush((function(_this) {
+        return function() {
+          _this._willNotify = false;
+          return _this._listeners.forEach(function(listener) {
+            listener(newValue, oldValue);
+            return true;
+          });
+        };
+      })(this));
     }
   });
 });
@@ -140,7 +186,7 @@ define(Reaction, function() {
       if (this._didSet != null) {
         this.addListener((function(_this) {
           return function() {
-            return _this._didSet.apply(_this._context, arguments);
+            return _this._didSet.apply(null, arguments);
           };
         })(this));
       }
@@ -156,46 +202,6 @@ define(Reaction, function() {
         this._dep.depend();
       }
       return this._value;
-    },
-    _recordChange: function() {
-      var newValue, oldValue;
-      if (Tracker.active && (this._computation == null)) {
-        this._computation = Tracker.currentComputation;
-        this._computation._sync = this._sync;
-      }
-      if (!this._shouldGet.call(this._context)) {
-        return;
-      }
-      oldValue = this._value;
-      newValue = this._get.call(this._context);
-      if (this._needsChange && (newValue === oldValue)) {
-        return;
-      }
-      return this._enqueueChange(oldValue, newValue);
-    },
-    _consumeChange: function() {
-      this._value = this._change.newValue;
-      this._dep.changed();
-      if (!(this._firstRun || !this._computation.firstRun)) {
-        return;
-      }
-      if (this._sync || this._computation.firstRun) {
-        return this._notifyListeners();
-      }
-      if (this._willNotify) {
-        return;
-      }
-      this._willNotify = true;
-      return Tracker.afterFlush(this._notifyListeners);
-    },
-    _notifyListeners: function() {
-      this._willNotify = false;
-      this._listeners.forEach(this._notifyListener);
-      return this._change = null;
-    },
-    _notifyListener: function(listener) {
-      listener.call(this, this._change.newValue, this._change.oldValue);
-      return true;
     }
   });
 });

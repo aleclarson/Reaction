@@ -1,8 +1,13 @@
 
 require "lotus-require"
 
-{ Void, Kind, isKind, isType, setType, assertType, validateTypes } = require "type-utils"
-{ sync } = require "io"
+{ Void
+  Kind
+  isType
+  setType
+  assert
+  assertType
+  validateTypes } = require "type-utils"
 
 NamedFunction = require "named-function"
 emptyFunction = require "emptyFunction"
@@ -13,18 +18,19 @@ define = require "define"
 configTypes =
   keyPath: [ String, Void ]
   sync: [ Boolean, Void ]
-  shouldGet: [ Function, Void ]
+  willGet: [ Function, Void ]
   get: Kind(Function)
+  willSet: [ Function, Void ]
   didSet: [ Function, Void ]
   firstRun: [ Boolean, Void ]
   needsChange: [ Boolean, Void ]
 
 module.exports =
-Reaction = NamedFunction "Reaction", (config, context) ->
+Reaction = NamedFunction "Reaction", (config) ->
 
-  assertType config, [ Object, Function.Kind ], "config"
+  assertType config, [ Object, configTypes.get ], "config"
 
-  if isKind config, Function
+  if isType config, configTypes.get
     config = { get: config }
 
   else # if __DEV__
@@ -36,13 +42,16 @@ Reaction = NamedFunction "Reaction", (config, context) ->
 
     @options = configurable: no
     @
-      keyPath: config.keyPath
       value: { get: Reaction._getValue }
+      keyPath: {
+        value: config.keyPath
+        didSet: (keyPath) ->
+          @_computation?.keyPath = keyPath
+      }
 
     @enumerable = no
     @
       _value: null
-      _change: null
       _stopped: yes
       _computation: null
       _sync: config.sync ?= no
@@ -50,19 +59,14 @@ Reaction = NamedFunction "Reaction", (config, context) ->
       _needsChange: config.needsChange ?= yes
       _willNotify: no
       _listeners: Immutable.OrderedSet()
-      _context: { value: config.context ?= context }
 
     @frozen = yes
     @
       _dep: new Tracker.Dependency
-      _shouldGet: config.shouldGet ?= emptyFunction.thatReturnsTrue
+      _willGet: config.willGet ?= emptyFunction.thatReturnsTrue
       _get: config.get
+      _willSet: config.willSet ?= emptyFunction.thatReturnsTrue
       _didSet: config.didSet
-      _changeQueue: config.changeQueue ?= Tracker.nonreactive
-      _recordChange: Reaction._recordChange.bind self
-      _consumeChange: Reaction._consumeChange.bind self
-      _notifyListener: Reaction._notifyListener.bind self
-      _notifyListeners: Reaction._notifyListeners.bind self
 
     Reaction._init.call self, config
 
@@ -73,7 +77,11 @@ define Reaction.prototype, ->
     start: ->
       return unless @_stopped
       @_stopped = no
-      Tracker.autorun @_recordChange
+      @_computation = new Tracker.Computation
+        keyPath: @keyPath
+        func: @_recordChange.bind this
+        sync: @_sync
+      @_computation.start()
       return
 
     stop: ->
@@ -94,9 +102,47 @@ define Reaction.prototype, ->
 
   @enumerable = no
   @
-    _enqueueChange: (oldValue, newValue) ->
-      @_change = { oldValue, newValue }
-      @_changeQueue @_consumeChange
+    _recordChange: ->
+
+      assert Tracker.active, "Tracker must be active!"
+
+      return unless @_willGet()
+
+      oldValue = @_value
+      newValue = @_get()
+
+      unless @_computation.firstRun
+        # Some reactions need the value to differ for a change to be recognized.
+        return if @_needsChange and (newValue is oldValue)
+
+      Tracker.nonreactive =>
+        @_consumeChange newValue, oldValue
+
+    _consumeChange: (newValue, oldValue) ->
+
+      return unless @_willSet newValue, oldValue
+
+      @_value = newValue
+      @_dep.changed()
+
+      # Some reactions dont notify their listeners on the first run.
+      return unless @_firstRun or not @_computation.firstRun
+
+      # Listeners are called immediately on the first run.
+      # Synchronous reactions always call listeners immediately.
+      if @_sync or @_computation.firstRun
+        @_listeners.forEach (listener) ->
+          listener newValue, oldValue
+          yes
+        return
+
+      return if @_willNotify
+      @_willNotify = yes
+      Tracker.afterFlush =>
+        @_willNotify = no
+        @_listeners.forEach (listener) ->
+          listener newValue, oldValue
+          yes
 
 define Reaction, ->
 
@@ -115,7 +161,7 @@ define Reaction, ->
 
       if @_didSet?
         @addListener =>
-          @_didSet.apply @_context, arguments
+          @_didSet.apply null, arguments
 
       config.autoStart ?= Reaction.autoStart
       @start() if config.autoStart
@@ -123,44 +169,3 @@ define Reaction, ->
     _getValue: ->
       @_dep.depend() if Tracker.active and (@_computation isnt Tracker.currentComputation)
       @_value
-
-    _recordChange: ->
-
-      if Tracker.active and not @_computation?
-        @_computation = Tracker.currentComputation
-        @_computation._sync = @_sync
-
-      return unless @_shouldGet.call @_context
-
-      oldValue = @_value
-      newValue = @_get.call @_context
-
-      # Some reactions need the value to differ for a change to be recognized.
-      return if @_needsChange and (newValue is oldValue)
-      @_enqueueChange oldValue, newValue
-
-    _consumeChange: ->
-
-      @_value = @_change.newValue
-      @_dep.changed()
-
-      # Some reactions wait for a change before their first run.
-      return unless @_firstRun or not @_computation.firstRun
-
-      # Listeners are called immediately on the first run.
-      # Synchronous reactions always call listeners immediately.
-      if @_sync or @_computation.firstRun
-        return @_notifyListeners()
-
-      return if @_willNotify
-      @_willNotify = yes
-      Tracker.afterFlush @_notifyListeners
-
-    _notifyListeners: ->
-      @_willNotify = no
-      @_listeners.forEach @_notifyListener
-      @_change = null
-
-    _notifyListener: (listener) ->
-      listener.call this, @_change.newValue, @_change.oldValue
-      yes

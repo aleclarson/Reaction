@@ -1,14 +1,11 @@
 {
   "name": "reaction",
-  "description": "",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "main": "./js/src/Reaction",
   "dependencies": {
     "define": "aleclarson/define#1.0.0",
     "emptyFunction": "aleclarson/emptyFunction#1.0.0",
-    "factory": "aleclarson/factory#1.0.0",
     "immutable": "^3.7.5",
-    "io": "aleclarson/io#1.0.0",
     "lotus-log": "aleclarson/lotus-log#1.0.0",
     "lotus-require": "aleclarson/lotus-require#1.0.0",
     "named-function": "aleclarson/named-function#1.0.3",
