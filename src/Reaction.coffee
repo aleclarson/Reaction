@@ -112,6 +112,7 @@ define Reaction.prototype, ->
       newValue = @_get()
 
       unless @_computation.firstRun
+
         # Some reactions need the value to differ for a change to be recognized.
         return if @_needsChange and (newValue is oldValue)
 
@@ -125,24 +126,29 @@ define Reaction.prototype, ->
       @_value = newValue
       @_dep.changed()
 
-      # Some reactions dont notify their listeners on the first run.
-      return unless @_firstRun or not @_computation.firstRun
+      if @_computation.firstRun
 
-      # Listeners are called immediately on the first run.
+        # Some reactions dont notify their listeners on the first run.
+        return unless @_firstRun
+
+        # Listeners are called immediately on the first run.
+        return @_notifyListeners newValue, oldValue
+
       # Synchronous reactions always call listeners immediately.
-      if @_sync or @_computation.firstRun
-        @_listeners.forEach (listener) ->
-          listener newValue, oldValue
-          yes
-        return
+      return @_notifyListeners newValue, oldValue if @_sync
 
+      # Asynchronous reactions batch any changes. Prevent duplicate events.
       return if @_willNotify
       @_willNotify = yes
       Tracker.afterFlush =>
         @_willNotify = no
-        @_listeners.forEach (listener) ->
-          listener newValue, oldValue
-          yes
+        @_notifyListeners newValue, oldValue
+
+    _notifyListeners: (newValue, oldValue) ->
+
+      @_listeners.forEach (listener) ->
+        listener newValue, oldValue
+        yes
 
 define Reaction, ->
 

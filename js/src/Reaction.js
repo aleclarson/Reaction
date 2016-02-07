@@ -1,10 +1,8 @@
-var Immutable, Kind, NamedFunction, Reaction, Tracker, Void, assert, assertType, configTypes, define, emptyFunction, isType, ref, setType, sync, validateTypes;
+var Immutable, Kind, NamedFunction, Reaction, Tracker, Void, assert, assertType, configTypes, define, emptyFunction, isType, ref, setType, validateTypes;
 
 require("lotus-require");
 
 ref = require("type-utils"), Void = ref.Void, Kind = ref.Kind, isType = ref.isType, setType = ref.setType, assert = ref.assert, assertType = ref.assertType, validateTypes = ref.validateTypes;
-
-sync = require("io").sync;
 
 NamedFunction = require("named-function");
 
@@ -137,15 +135,14 @@ define(Reaction.prototype, function() {
       }
       this._value = newValue;
       this._dep.changed();
-      if (!(this._firstRun || !this._computation.firstRun)) {
-        return;
+      if (this._computation.firstRun) {
+        if (!this._firstRun) {
+          return;
+        }
+        return this._notifyListeners(newValue, oldValue);
       }
-      if (this._sync || this._computation.firstRun) {
-        this._listeners.forEach(function(listener) {
-          listener(newValue, oldValue);
-          return true;
-        });
-        return;
+      if (this._sync) {
+        return this._notifyListeners(newValue, oldValue);
       }
       if (this._willNotify) {
         return;
@@ -154,12 +151,15 @@ define(Reaction.prototype, function() {
       return Tracker.afterFlush((function(_this) {
         return function() {
           _this._willNotify = false;
-          return _this._listeners.forEach(function(listener) {
-            listener(newValue, oldValue);
-            return true;
-          });
+          return _this._notifyListeners(newValue, oldValue);
         };
       })(this));
+    },
+    _notifyListeners: function(newValue, oldValue) {
+      return this._listeners.forEach(function(listener) {
+        listener(newValue, oldValue);
+        return true;
+      });
     }
   });
 });
