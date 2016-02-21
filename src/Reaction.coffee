@@ -11,7 +11,7 @@ require "lotus-require"
 
 NamedFunction = require "named-function"
 emptyFunction = require "emptyFunction"
-Immutable = require "immutable"
+Listenable = require "listenable"
 Tracker = require "tracker"
 define = require "define"
 
@@ -38,6 +38,8 @@ Reaction = NamedFunction "Reaction", (config) ->
 
   self = setType {}, Reaction
 
+  Listenable self, { eventNames: no }
+
   define self, ->
 
     @options = configurable: no
@@ -58,7 +60,6 @@ Reaction = NamedFunction "Reaction", (config) ->
       _firstRun: config.firstRun ?= yes
       _needsChange: config.needsChange ?= yes
       _willNotify: no
-      _listeners: Immutable.OrderedSet()
 
     @frozen = yes
     @
@@ -67,6 +68,7 @@ Reaction = NamedFunction "Reaction", (config) ->
       _get: config.get
       _willSet: config.willSet ?= emptyFunction.thatReturnsTrue
       _didSet: config.didSet
+      _DEBUG: config.DEBUG
 
     Reaction._init.call self, config
 
@@ -85,19 +87,11 @@ define Reaction.prototype, ->
       return
 
     stop: ->
+      # TODO Involve a reference count.
       return if @_stopped
       @_stopped = yes
       @_computation.stop()
       @_computation = null
-      return
-
-    addListener: (listener) ->
-      assertType listener, Function
-      @_listeners = @_listeners.add listener
-      return
-
-    removeListener: (listener) ->
-      @_listeners = @_listeners.delete listener
       return
 
   @enumerable = no
@@ -111,17 +105,21 @@ define Reaction.prototype, ->
       oldValue = @_value
       newValue = @_get()
 
-      unless @_computation.firstRun
-
-        # Some reactions need the value to differ for a change to be recognized.
-        return if @_needsChange and (newValue is oldValue)
-
       Tracker.nonreactive =>
         @_consumeChange newValue, oldValue
 
     _consumeChange: (newValue, oldValue) ->
 
+      unless @_computation.firstRun
+
+        # Some reactions need the value to differ for a change to be recognized.
+        return if @_needsChange and (newValue is oldValue)
+
       return unless @_willSet newValue, oldValue
+
+      if @_DEBUG
+        @_newValues ?= []
+        @_newValues.push newValue
 
       @_value = newValue
       @_dep.changed()

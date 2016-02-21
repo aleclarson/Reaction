@@ -5,8 +5,7 @@
   "dependencies": {
     "define": "aleclarson/define#1.0.0",
     "emptyFunction": "aleclarson/emptyFunction#1.0.0",
-    "immutable": "^3.7.5",
-    "lotus-log": "aleclarson/lotus-log#1.0.0",
+    "listenable": "aleclarson/listenable#1.0.0",
     "lotus-require": "aleclarson/lotus-require#1.0.0",
     "named-function": "aleclarson/named-function#1.0.3",
     "tracker": "aleclarson/tracker#1.0.8",

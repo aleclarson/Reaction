@@ -1,4 +1,4 @@
-var Immutable, Kind, NamedFunction, Reaction, Tracker, Void, assert, assertType, configTypes, define, emptyFunction, isType, ref, setType, validateTypes;
+var Kind, Listenable, NamedFunction, Reaction, Tracker, Void, assert, assertType, configTypes, define, emptyFunction, isType, ref, setType, validateTypes;
 
 require("lotus-require");
 
@@ -8,7 +8,7 @@ NamedFunction = require("named-function");
 
 emptyFunction = require("emptyFunction");
 
-Immutable = require("immutable");
+Listenable = require("listenable");
 
 Tracker = require("tracker");
 
@@ -36,6 +36,9 @@ module.exports = Reaction = NamedFunction("Reaction", function(config) {
     validateTypes(config, configTypes);
   }
   self = setType({}, Reaction);
+  Listenable(self, {
+    eventNames: false
+  });
   return define(self, function() {
     this.options = {
       configurable: false
@@ -60,8 +63,7 @@ module.exports = Reaction = NamedFunction("Reaction", function(config) {
       _sync: config.sync != null ? config.sync : config.sync = false,
       _firstRun: config.firstRun != null ? config.firstRun : config.firstRun = true,
       _needsChange: config.needsChange != null ? config.needsChange : config.needsChange = true,
-      _willNotify: false,
-      _listeners: Immutable.OrderedSet()
+      _willNotify: false
     });
     this.frozen = true;
     this({
@@ -69,7 +71,8 @@ module.exports = Reaction = NamedFunction("Reaction", function(config) {
       _willGet: config.willGet != null ? config.willGet : config.willGet = emptyFunction.thatReturnsTrue,
       _get: config.get,
       _willSet: config.willSet != null ? config.willSet : config.willSet = emptyFunction.thatReturnsTrue,
-      _didSet: config.didSet
+      _didSet: config.didSet,
+      _DEBUG: config.DEBUG
     });
     return Reaction._init.call(self, config);
   });
@@ -99,13 +102,6 @@ define(Reaction.prototype, function() {
       this._stopped = true;
       this._computation.stop();
       this._computation = null;
-    },
-    addListener: function(listener) {
-      assertType(listener, Function);
-      this._listeners = this._listeners.add(listener);
-    },
-    removeListener: function(listener) {
-      this._listeners = this._listeners["delete"](listener);
     }
   });
   this.enumerable = false;
@@ -118,11 +114,6 @@ define(Reaction.prototype, function() {
       }
       oldValue = this._value;
       newValue = this._get();
-      if (!this._computation.firstRun) {
-        if (this._needsChange && (newValue === oldValue)) {
-          return;
-        }
-      }
       return Tracker.nonreactive((function(_this) {
         return function() {
           return _this._consumeChange(newValue, oldValue);
@@ -130,8 +121,19 @@ define(Reaction.prototype, function() {
       })(this));
     },
     _consumeChange: function(newValue, oldValue) {
+      if (!this._computation.firstRun) {
+        if (this._needsChange && (newValue === oldValue)) {
+          return;
+        }
+      }
       if (!this._willSet(newValue, oldValue)) {
         return;
+      }
+      if (this._DEBUG) {
+        if (this._newValues == null) {
+          this._newValues = [];
+        }
+        this._newValues.push(newValue);
       }
       this._value = newValue;
       this._dep.changed();
