@@ -47,6 +47,11 @@ module.exports = Reaction = NamedFunction("Reaction", function(config) {
       value: {
         get: Reaction._getValue
       },
+      getValue: {
+        lazy: function() {
+          return Reaction._getValue.bind(this);
+        }
+      },
       keyPath: {
         value: config.keyPath,
         didSet: function(keyPath) {

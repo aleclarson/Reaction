@@ -45,6 +45,7 @@ Reaction = NamedFunction "Reaction", (config) ->
     @options = configurable: no
     @
       value: { get: Reaction._getValue }
+      getValue: { lazy: -> Reaction._getValue.bind this }
       keyPath: {
         value: config.keyPath
         didSet: (keyPath) ->
