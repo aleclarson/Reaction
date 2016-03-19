@@ -131,23 +131,17 @@ define Reaction.prototype, ->
         return unless @_firstRun
 
         # Listeners are called immediately on the first run.
-        return @_notifyListeners newValue, oldValue
+        return @_emit newValue, oldValue
 
       # Synchronous reactions always call listeners immediately.
-      return @_notifyListeners newValue, oldValue if @_sync
+      return @_emit newValue, oldValue if @_sync
 
       # Asynchronous reactions batch any changes. Prevent duplicate events.
       return if @_willNotify
       @_willNotify = yes
       Tracker.afterFlush =>
         @_willNotify = no
-        @_notifyListeners newValue, oldValue
-
-    _notifyListeners: (newValue, oldValue) ->
-
-      @_listeners.forEach (listener) ->
-        listener newValue, oldValue
-        yes
+        @_emit newValue, oldValue
 
 define Reaction, ->
 

@@ -146,10 +146,10 @@ define(Reaction.prototype, function() {
         if (!this._firstRun) {
           return;
         }
-        return this._notifyListeners(newValue, oldValue);
+        return this._emit(newValue, oldValue);
       }
       if (this._sync) {
-        return this._notifyListeners(newValue, oldValue);
+        return this._emit(newValue, oldValue);
       }
       if (this._willNotify) {
         return;
@@ -158,15 +158,9 @@ define(Reaction.prototype, function() {
       return Tracker.afterFlush((function(_this) {
         return function() {
           _this._willNotify = false;
-          return _this._notifyListeners(newValue, oldValue);
+          return _this._emit(newValue, oldValue);
         };
       })(this));
-    },
-    _notifyListeners: function(newValue, oldValue) {
-      return this._listeners.forEach(function(listener) {
-        listener(newValue, oldValue);
-        return true;
-      });
     }
   });
 });
