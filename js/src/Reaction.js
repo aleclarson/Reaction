@@ -1,210 +1,202 @@
-var Kind, Listenable, NamedFunction, Reaction, Tracker, Void, assert, assertType, configTypes, define, emptyFunction, isType, ref, setType, validateTypes;
+var Event, Factory, Injector, ReactionInjector, Tracker, assert, assertType, emptyFunction, isDev, isType, ref, setType, validateTypes;
 
 require("lotus-require");
 
-ref = require("type-utils"), Void = ref.Void, Kind = ref.Kind, isType = ref.isType, setType = ref.setType, assert = ref.assert, assertType = ref.assertType, validateTypes = ref.validateTypes;
-
-NamedFunction = require("named-function");
+ref = require("type-utils"), isType = ref.isType, setType = ref.setType, assert = ref.assert, assertType = ref.assertType, validateTypes = ref.validateTypes;
 
 emptyFunction = require("emptyFunction");
 
-Listenable = require("listenable");
+Injector = require("injector");
 
 Tracker = require("tracker");
 
-define = require("define");
+Factory = require("factory");
 
-configTypes = {
-  keyPath: [String, Void],
-  sync: [Boolean, Void],
-  willGet: [Function, Void],
-  get: Kind(Function),
-  willSet: [Function, Void],
-  didSet: [Function, Void],
-  firstRun: [Boolean, Void],
-  needsChange: [Boolean, Void]
-};
+Event = require("event");
 
-module.exports = Reaction = NamedFunction("Reaction", function(config) {
-  var self;
-  assertType(config, [Object, configTypes.get], "config");
-  if (isType(config, configTypes.get)) {
-    config = {
-      get: config
-    };
-  } else {
-    validateTypes(config, configTypes);
-  }
-  self = setType({}, Reaction);
-  Listenable(self, {
-    eventNames: false
-  });
-  return define(self, function() {
-    this.options = {
-      configurable: false
-    };
-    this({
-      value: {
-        get: Reaction._getValue
-      },
-      getValue: {
-        lazy: function() {
-          return Reaction._getValue.bind(this);
+isDev = require("isDev");
+
+ReactionInjector = Injector("Reaction");
+
+ReactionInjector.push("autoStart", true);
+
+module.exports = Factory("Reaction", {
+  statics: {
+    sync: function(options) {
+      var reaction;
+      reaction = Reaction(options);
+      reaction._sync = true;
+      return reaction;
+    }
+  },
+  initArguments: function(options) {
+    if (isType(options, Function.Kind)) {
+      options = {
+        get: options
+      };
+    }
+    return [options];
+  },
+  optionTypes: {
+    keyPath: String.Maybe,
+    firstRun: Boolean,
+    autoStart: Boolean.Maybe,
+    needsChange: Boolean,
+    willGet: Function,
+    get: Function.Kind,
+    willSet: Function,
+    didSet: Function.Maybe
+  },
+  optionDefaults: {
+    sync: false,
+    firstRun: true,
+    needsChange: true,
+    willGet: emptyFunction.thatReturnsTrue,
+    willSet: emptyFunction.thatReturnsTrue
+  },
+  customValues: {
+    value: {
+      get: function() {
+        if (Tracker.active) {
+          if (this._computation !== Tracker.currentComputation) {
+            this._dep.depend();
+          }
         }
-      },
-      keyPath: {
-        value: config.keyPath,
-        didSet: function(keyPath) {
-          var ref1;
-          return (ref1 = this._computation) != null ? ref1.keyPath = keyPath : void 0;
+        return this._value;
+      }
+    },
+    getValue: {
+      lazy: function() {
+        return (function(_this) {
+          return function() {
+            return _this.value;
+          };
+        })(this);
+      }
+    },
+    keyPath: {
+      didSet: function(keyPath) {
+        if (this._computation) {
+          return this._computation.keyPath = keyPath;
         }
       }
-    });
-    this.enumerable = false;
-    this({
-      _value: null,
-      _stopped: true,
-      _computation: null,
-      _sync: config.sync != null ? config.sync : config.sync = false,
-      _firstRun: config.firstRun != null ? config.firstRun : config.firstRun = true,
-      _needsChange: config.needsChange != null ? config.needsChange : config.needsChange = true,
-      _willNotify: false
-    });
-    this.frozen = true;
-    this({
+    }
+  },
+  initFrozenValues: function(options) {
+    return {
+      didSet: Event(options.didSet),
       _dep: new Tracker.Dependency,
-      _willGet: config.willGet != null ? config.willGet : config.willGet = emptyFunction.thatReturnsTrue,
-      _get: config.get,
-      _willSet: config.willSet != null ? config.willSet : config.willSet = emptyFunction.thatReturnsTrue,
-      _didSet: config.didSet,
-      _DEBUG: config.DEBUG
-    });
-    return Reaction._init.call(self, config);
-  });
-});
-
-define(Reaction.prototype, function() {
-  this.options = {
-    frozen: true
-  };
-  this({
-    start: function() {
-      if (!this._stopped) {
-        return;
-      }
-      this._stopped = false;
+      _willGet: options.willGet,
+      _get: options.get,
+      _willSet: options.willSet,
+      _initStackTrace: Error()
+    };
+  },
+  initValues: function(options) {
+    return {
+      isActive: false,
+      _value: null,
+      _computation: null,
+      _sync: false,
+      _firstRun: options.firstRun,
+      _needsChange: options.needsChange,
+      _willNotify: false,
+      _refCount: 1
+    };
+  },
+  init: function(options) {
+    var autoStart;
+    this.keyPath = options.keyPath;
+    autoStart = options.autoStart;
+    if (autoStart === void 0) {
+      autoStart = ReactionInjector.get("autoStart");
+    }
+    if (autoStart) {
+      return this.start();
+    }
+  },
+  start: function() {
+    if (this.isActive) {
+      return;
+    }
+    this.isActive = true;
+    if (!this._computation) {
       this._computation = new Tracker.Computation({
         keyPath: this.keyPath,
-        func: this._recordChange.bind(this),
-        sync: this._sync
-      });
-      this._computation.start();
-    },
-    stop: function() {
-      if (this._stopped) {
-        return;
-      }
-      this._stopped = true;
-      this._computation.stop();
-      this._computation = null;
-    }
-  });
-  this.enumerable = false;
-  return this({
-    _recordChange: function() {
-      var newValue, oldValue;
-      assert(Tracker.active, "Tracker must be active!");
-      if (!this._willGet()) {
-        return;
-      }
-      oldValue = this._value;
-      newValue = this._get();
-      return Tracker.nonreactive((function(_this) {
-        return function() {
-          return _this._consumeChange(newValue, oldValue);
-        };
-      })(this));
-    },
-    _consumeChange: function(newValue, oldValue) {
-      if (!this._computation.firstRun) {
-        if (this._needsChange && (newValue === oldValue)) {
-          return;
-        }
-      }
-      if (!this._willSet(newValue, oldValue)) {
-        return;
-      }
-      if (this._DEBUG) {
-        if (this._newValues == null) {
-          this._newValues = [];
-        }
-        this._newValues.push(newValue);
-      }
-      this._value = newValue;
-      this._dep.changed();
-      if (this._computation.firstRun) {
-        if (!this._firstRun) {
-          return;
-        }
-        return this._emit(newValue, oldValue);
-      }
-      if (this._sync) {
-        return this._emit(newValue, oldValue);
-      }
-      if (this._willNotify) {
-        return;
-      }
-      this._willNotify = true;
-      return Tracker.afterFlush((function(_this) {
-        return function() {
-          _this._willNotify = false;
-          return _this._emit(newValue, oldValue);
-        };
-      })(this));
-    }
-  });
-});
-
-define(Reaction, function() {
-  this.options = {
-    configurable: false
-  };
-  this({
-    autoStart: true,
-    sync: function(config) {
-      if (isType(config, Function)) {
-        config = {
-          get: config
-        };
-      }
-      config.sync = true;
-      return Reaction(config);
-    }
-  });
-  this.enumerable = false;
-  return this({
-    _init: function(config) {
-      if (this._didSet != null) {
-        this.addListener((function(_this) {
+        sync: this._sync,
+        func: (function(_this) {
           return function() {
-            return _this._didSet.apply(null, arguments);
+            return _this._recompute();
           };
-        })(this));
-      }
-      if (config.autoStart == null) {
-        config.autoStart = Reaction.autoStart;
-      }
-      if (config.autoStart) {
-        return this.start();
-      }
-    },
-    _getValue: function() {
-      if (Tracker.active && (this._computation !== Tracker.currentComputation)) {
-        this._dep.depend();
-      }
-      return this._value;
+        })(this)
+      });
     }
-  });
+    this._computation.start();
+  },
+  stop: function() {
+    if (!this.isActive) {
+      return;
+    }
+    this.isActive = false;
+    this._computation.stop();
+  },
+  retain: function() {
+    return this._refCount += 1;
+  },
+  release: function() {
+    if (this._refCount === 0) {
+      return;
+    }
+    this._refCount -= 1;
+    if (this._refCount === 0) {
+      return this.stop();
+    }
+  },
+  _recompute: function() {
+    var newValue, oldValue;
+    assert(Tracker.active, "Tracker must be active!");
+    if (!this._willGet()) {
+      return;
+    }
+    oldValue = this._value;
+    newValue = this._get();
+    return Tracker.nonreactive((function(_this) {
+      return function() {
+        return _this._notify(newValue, oldValue);
+      };
+    })(this));
+  },
+  _notify: function(newValue, oldValue) {
+    if (!this._computation.firstRun) {
+      if (this._needsChange && (newValue === oldValue)) {
+        return;
+      }
+    }
+    if (!this._willSet(newValue, oldValue)) {
+      return;
+    }
+    this._value = newValue;
+    this._dep.changed();
+    if (this._computation.firstRun) {
+      if (!this._firstRun) {
+        return;
+      }
+      return this.didSet.emit(newValue, oldValue);
+    }
+    if (this._sync) {
+      return this.didSet.emit(newValue, oldValue);
+    }
+    if (this._willNotify) {
+      return;
+    }
+    this._willNotify = true;
+    return Tracker.afterFlush((function(_this) {
+      return function() {
+        _this._willNotify = false;
+        return _this.didSet.emit(newValue, oldValue);
+      };
+    })(this));
+  }
 });
 
 //# sourceMappingURL=../../map/src/Reaction.map

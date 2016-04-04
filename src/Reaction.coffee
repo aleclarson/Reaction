@@ -1,170 +1,166 @@
 
 require "lotus-require"
 
-{ Void
-  Kind
-  isType
+{ isType
   setType
   assert
   assertType
   validateTypes } = require "type-utils"
 
-NamedFunction = require "named-function"
 emptyFunction = require "emptyFunction"
-Listenable = require "listenable"
+Injector = require "injector"
 Tracker = require "tracker"
-define = require "define"
+Factory = require "factory"
+Event = require "event"
+isDev = require "isDev"
 
-configTypes =
-  keyPath: [ String, Void ]
-  sync: [ Boolean, Void ]
-  willGet: [ Function, Void ]
-  get: Kind(Function)
-  willSet: [ Function, Void ]
-  didSet: [ Function, Void ]
-  firstRun: [ Boolean, Void ]
-  needsChange: [ Boolean, Void ]
+ReactionInjector = Injector "Reaction"
+ReactionInjector.push "autoStart", yes
 
-module.exports =
-Reaction = NamedFunction "Reaction", (config) ->
+module.exports = Factory "Reaction",
 
-  assertType config, [ Object, configTypes.get ], "config"
+  statics:
 
-  if isType config, configTypes.get
-    config = { get: config }
+    sync: (options) ->
+      reaction = Reaction options
+      reaction._sync = yes
+      reaction
 
-  else # if __DEV__
-    validateTypes config, configTypes
+  initArguments: (options) ->
+    options = { get: options } if isType options, Function.Kind
+    [ options ]
 
-  self = setType {}, Reaction
+  optionTypes:
+    keyPath: String.Maybe
+    firstRun: Boolean
+    autoStart: Boolean.Maybe
+    needsChange: Boolean
+    willGet: Function
+    get: Function.Kind
+    willSet: Function
+    didSet: Function.Maybe
 
-  Listenable self, { eventNames: no }
+  optionDefaults:
+    sync: no
+    firstRun: yes
+    needsChange: yes
+    willGet: emptyFunction.thatReturnsTrue
+    willSet: emptyFunction.thatReturnsTrue
 
-  define self, ->
+  customValues:
 
-    @options = configurable: no
-    @
-      value: { get: Reaction._getValue }
-      getValue: { lazy: -> Reaction._getValue.bind this }
-      keyPath: {
-        value: config.keyPath
-        didSet: (keyPath) ->
-          @_computation?.keyPath = keyPath
-      }
+    value: get: ->
+      if Tracker.active
+        @_dep.depend() if @_computation isnt Tracker.currentComputation
+      @_value
 
-    @enumerable = no
-    @
-      _value: null
-      _stopped: yes
-      _computation: null
-      _sync: config.sync ?= no
-      _firstRun: config.firstRun ?= yes
-      _needsChange: config.needsChange ?= yes
-      _willNotify: no
+    getValue: lazy: ->
+      return => @value
 
-    @frozen = yes
-    @
-      _dep: new Tracker.Dependency
-      _willGet: config.willGet ?= emptyFunction.thatReturnsTrue
-      _get: config.get
-      _willSet: config.willSet ?= emptyFunction.thatReturnsTrue
-      _didSet: config.didSet
-      _DEBUG: config.DEBUG
+    keyPath: didSet: (keyPath) ->
+      @_computation.keyPath = keyPath if @_computation
 
-    Reaction._init.call self, config
+  initFrozenValues: (options) ->
 
-define Reaction.prototype, ->
+    didSet: Event options.didSet
 
-  @options = frozen: yes
-  @
-    start: ->
-      return unless @_stopped
-      @_stopped = no
+    _dep: new Tracker.Dependency
+
+    _willGet: options.willGet
+
+    _get: options.get
+
+    _willSet: options.willSet
+
+    _initStackTrace: Error() # if isDev
+
+  initValues: (options) ->
+
+    isActive: no
+
+    _value: null
+
+    _computation: null
+
+    _sync: no
+
+    _firstRun: options.firstRun
+
+    _needsChange: options.needsChange
+
+    _willNotify: no
+
+    _refCount: 1
+
+  init: (options) ->
+    @keyPath = options.keyPath
+    autoStart = options.autoStart
+    autoStart = ReactionInjector.get "autoStart" if autoStart is undefined
+    @start() if autoStart
+
+  start: ->
+    return if @isActive
+    @isActive = yes
+    unless @_computation
       @_computation = new Tracker.Computation
         keyPath: @keyPath
-        func: @_recordChange.bind this
         sync: @_sync
-      @_computation.start()
-      return
+        func: => @_recompute()
+    @_computation.start()
+    return
 
-    stop: ->
-      # TODO Involve a reference count.
-      return if @_stopped
-      @_stopped = yes
-      @_computation.stop()
-      @_computation = null
-      return
+  stop: ->
+    return unless @isActive
+    @isActive = no
+    @_computation.stop()
+    return
 
-  @enumerable = no
-  @
-    _recordChange: ->
+  retain: ->
+    @_refCount += 1
 
-      assert Tracker.active, "Tracker must be active!"
+  release: ->
+    return if @_refCount is 0
+    @_refCount -= 1
+    @stop() if @_refCount is 0
 
-      return unless @_willGet()
+  _recompute: ->
 
-      oldValue = @_value
-      newValue = @_get()
+    assert Tracker.active, "Tracker must be active!"
 
-      Tracker.nonreactive =>
-        @_consumeChange newValue, oldValue
+    return unless @_willGet()
 
-    _consumeChange: (newValue, oldValue) ->
+    oldValue = @_value
+    newValue = @_get()
 
-      unless @_computation.firstRun
+    Tracker.nonreactive =>
+      @_notify newValue, oldValue
 
-        # Some reactions need the value to differ for a change to be recognized.
-        return if @_needsChange and (newValue is oldValue)
+  _notify: (newValue, oldValue) ->
 
-      return unless @_willSet newValue, oldValue
+    unless @_computation.firstRun
 
-      if @_DEBUG
-        @_newValues ?= []
-        @_newValues.push newValue
+      # Some reactions need the value to differ for a change to be recognized.
+      return if @_needsChange and (newValue is oldValue)
 
-      @_value = newValue
-      @_dep.changed()
+    return unless @_willSet newValue, oldValue
 
-      if @_computation.firstRun
+    @_value = newValue
+    @_dep.changed()
 
-        # Some reactions dont notify their listeners on the first run.
-        return unless @_firstRun
+    if @_computation.firstRun
 
-        # Listeners are called immediately on the first run.
-        return @_emit newValue, oldValue
+      # Some reactions dont notify their listeners on the first run.
+      return unless @_firstRun
 
-      # Synchronous reactions always call listeners immediately.
-      return @_emit newValue, oldValue if @_sync
+      # Listeners are called immediately on the first run.
+      return @didSet.emit newValue, oldValue
 
-      # Asynchronous reactions batch any changes. Prevent duplicate events.
-      return if @_willNotify
-      @_willNotify = yes
-      Tracker.afterFlush =>
-        @_willNotify = no
-        @_emit newValue, oldValue
+    # Synchronous reactions always call listeners immediately.
+    return @didSet.emit newValue, oldValue if @_sync
 
-define Reaction, ->
-
-  @options = configurable: no
-  @
-    autoStart: yes
-
-    sync: (config) ->
-      config = get: config if isType config, Function
-      config.sync = yes
-      Reaction config
-
-  @enumerable = no
-  @
-    _init: (config) ->
-
-      if @_didSet?
-        @addListener =>
-          @_didSet.apply null, arguments
-
-      config.autoStart ?= Reaction.autoStart
-      @start() if config.autoStart
-
-    _getValue: ->
-      @_dep.depend() if Tracker.active and (@_computation isnt Tracker.currentComputation)
-      @_value
+    # Asynchronous reactions batch any changes. Prevent duplicate events.
+    return if @_willNotify
+    @_willNotify = yes
+    Tracker.afterFlush =>
+      @_willNotify = no
+      @didSet.emit newValue, oldValue
