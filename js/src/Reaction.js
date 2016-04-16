@@ -1,6 +1,6 @@
-var Event, Factory, Injector, ReactionInjector, Tracker, assert, assertType, emptyFunction, isDev, isType, ref, setType, validateTypes;
+var Event, Factory, Injector, ReactionInjector, Tracer, Tracker, assert, assertType, emptyFunction, isType, ref, setType, validateTypes;
 
-require("lotus-require");
+require("isDev");
 
 ref = require("type-utils"), isType = ref.isType, setType = ref.setType, assert = ref.assert, assertType = ref.assertType, validateTypes = ref.validateTypes;
 
@@ -12,9 +12,9 @@ Tracker = require("tracker");
 
 Factory = require("factory");
 
-Event = require("event");
+Tracer = require("tracer");
 
-isDev = require("isDev");
+Event = require("event");
 
 ReactionInjector = Injector("Reaction");
 
@@ -89,7 +89,7 @@ module.exports = Factory("Reaction", {
       _willGet: options.willGet,
       _get: options.get,
       _willSet: options.willSet,
-      _initStackTrace: Error()
+      _traceInit: isDev ? Tracer("Reaction()") : void 0
     };
   },
   initValues: function(options) {

@@ -1,5 +1,5 @@
 
-require "lotus-require"
+require "isDev"
 
 { isType
   setType
@@ -11,8 +11,8 @@ emptyFunction = require "emptyFunction"
 Injector = require "injector"
 Tracker = require "tracker"
 Factory = require "factory"
+Tracer = require "tracer"
 Event = require "event"
-isDev = require "isDev"
 
 ReactionInjector = Injector "Reaction"
 ReactionInjector.push "autoStart", yes
@@ -72,7 +72,7 @@ module.exports = Factory "Reaction",
 
     _willSet: options.willSet
 
-    _initStackTrace: Error() # if isDev
+    _traceInit: Tracer "Reaction()" if isDev
 
   initValues: (options) ->
 
