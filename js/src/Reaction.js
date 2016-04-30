@@ -1,4 +1,4 @@
-var Event, Factory, Injector, ReactionInjector, Tracer, Tracker, assert, assertType, emptyFunction, isType, ref, setType, validateTypes;
+var Event, Injectable, Reaction, Tracer, Tracker, Type, assert, assertType, emptyFunction, injectable, isType, ref, setType, type, validateTypes;
 
 require("isDev");
 
@@ -6,121 +6,162 @@ ref = require("type-utils"), isType = ref.isType, setType = ref.setType, assert 
 
 emptyFunction = require("emptyFunction");
 
-Injector = require("injector");
+Injectable = require("Injectable");
 
 Tracker = require("tracker");
-
-Factory = require("factory");
 
 Tracer = require("tracer");
 
 Event = require("event");
 
-ReactionInjector = Injector("Reaction");
+Type = require("Type");
 
-ReactionInjector.push("autoStart", true);
+injectable = Injectable.Map({
+  types: {
+    autoStart: Boolean
+  },
+  values: {
+    autoStart: true
+  }
+});
 
-module.exports = Factory("Reaction", {
-  statics: {
-    sync: function(options) {
-      var reaction;
-      reaction = Reaction(options);
-      reaction._sync = true;
-      return reaction;
+type = Type("Reaction");
+
+type.createArguments(function(args) {
+  if (isType(args[0], Function.Kind)) {
+    args[0] = {
+      get: args[0]
+    };
+  }
+  return args;
+});
+
+type.optionTypes = {
+  keyPath: String.Maybe,
+  firstRun: Boolean,
+  autoStart: Boolean.Maybe,
+  needsChange: Boolean,
+  willGet: Function,
+  get: Function.Kind,
+  willSet: Function,
+  didSet: Function.Maybe
+};
+
+type.optionDefaults = {
+  sync: false,
+  firstRun: true,
+  needsChange: true,
+  willGet: emptyFunction.thatReturnsTrue,
+  willSet: emptyFunction.thatReturnsTrue
+};
+
+type.defineProperties({
+  isActive: {
+    get: function() {
+      var c;
+      c = this._computation;
+      return c && c.isActive;
     }
   },
-  initArguments: function(options) {
-    if (isType(options, Function.Kind)) {
-      options = {
-        get: options
-      };
-    }
-    return [options];
-  },
-  optionTypes: {
-    keyPath: String.Maybe,
-    firstRun: Boolean,
-    autoStart: Boolean.Maybe,
-    needsChange: Boolean,
-    willGet: Function,
-    get: Function.Kind,
-    willSet: Function,
-    didSet: Function.Maybe
-  },
-  optionDefaults: {
-    sync: false,
-    firstRun: true,
-    needsChange: true,
-    willGet: emptyFunction.thatReturnsTrue,
-    willSet: emptyFunction.thatReturnsTrue
-  },
-  customValues: {
-    value: {
-      get: function() {
-        if (Tracker.active) {
-          if (this._computation !== Tracker.currentComputation) {
-            this._dep.depend();
-          }
-        }
-        return this._value;
-      }
-    },
-    getValue: {
-      lazy: function() {
-        return (function(_this) {
-          return function() {
-            return _this.value;
-          };
-        })(this);
-      }
-    },
-    keyPath: {
-      didSet: function(keyPath) {
-        if (this._computation) {
-          return this._computation.keyPath = keyPath;
+  value: {
+    get: function() {
+      if (Tracker.active) {
+        if (this._computation !== Tracker.currentComputation) {
+          this._dep.depend();
         }
       }
+      return this._value;
     }
   },
-  initFrozenValues: function(options) {
-    return {
-      didSet: Event(options.didSet),
-      _dep: new Tracker.Dependency,
-      _willGet: options.willGet,
-      _get: options.get,
-      _willSet: options.willSet,
-      _traceInit: isDev ? Tracer("Reaction()") : void 0
-    };
-  },
-  initValues: function(options) {
-    return {
-      isActive: false,
-      _value: null,
-      _computation: null,
-      _sync: false,
-      _firstRun: options.firstRun,
-      _needsChange: options.needsChange,
-      _willNotify: false,
-      _refCount: 1
-    };
-  },
-  init: function(options) {
-    var autoStart;
-    this.keyPath = options.keyPath;
-    autoStart = options.autoStart;
-    if (autoStart === void 0) {
-      autoStart = ReactionInjector.get("autoStart");
-    }
-    if (autoStart) {
-      return this.start();
+  getValue: {
+    lazy: function() {
+      return (function(_this) {
+        return function() {
+          return _this.value;
+        };
+      })(this);
     }
   },
+  keyPath: {
+    didSet: function(keyPath) {
+      if (this._computation) {
+        return this._computation.keyPath = keyPath;
+      }
+    }
+  },
+  inject: {
+    get: function() {
+      return injectable.inject;
+    }
+  }
+});
+
+type.defineFrozenValues({
+  didSet: function(options) {
+    return Event(options.didSet);
+  },
+  _dep: function() {
+    return Tracker.Dependency();
+  },
+  _willGet: function(options) {
+    return options.willGet;
+  },
+  _get: function(options) {
+    return options.get;
+  },
+  _willSet: function(options) {
+    return options.willSet;
+  }
+});
+
+if (isDev) {
+  type.defineFrozenValues({
+    _traceInit: function() {
+      return Tracer("Reaction()");
+    }
+  });
+}
+
+type.defineValues({
+  _value: null,
+  _computation: null,
+  _sync: false,
+  _firstRun: function(options) {
+    return options.firstRun;
+  },
+  _needsChange: function(options) {
+    return options.needsChange;
+  },
+  _willNotify: false
+});
+
+type.initInstance(function(options) {
+  var autoStart;
+  this.keyPath = options.keyPath;
+  autoStart = options.autoStart;
+  if (autoStart === void 0) {
+    autoStart = injectable.autoStart;
+  }
+  if (autoStart) {
+    return this.start();
+  }
+});
+
+type.defineStatics({
+  sync: function(options) {
+    var reaction;
+    reaction = Reaction(options);
+    reaction._sync = true;
+    return reaction;
+  }
+});
+
+type.defineMethods({
   start: function() {
     if (this.isActive) {
       return;
     }
-    this.isActive = true;
-    if (!this._computation) {
+    if (this._computation == null) {
       this._computation = new Tracker.Computation({
         keyPath: this.keyPath,
         sync: this._sync,
@@ -139,18 +180,6 @@ module.exports = Factory("Reaction", {
     }
     this.isActive = false;
     this._computation.stop();
-  },
-  retain: function() {
-    return this._refCount += 1;
-  },
-  release: function() {
-    if (this._refCount === 0) {
-      return;
-    }
-    this._refCount -= 1;
-    if (this._refCount === 0) {
-      return this.stop();
-    }
   },
   _recompute: function() {
     var newValue, oldValue;
@@ -198,5 +227,7 @@ module.exports = Factory("Reaction", {
     })(this));
   }
 });
+
+module.exports = Reaction = type.build();
 
 //# sourceMappingURL=../../map/src/Reaction.map

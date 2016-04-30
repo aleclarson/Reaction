@@ -8,104 +8,118 @@ require "isDev"
   validateTypes } = require "type-utils"
 
 emptyFunction = require "emptyFunction"
-Injector = require "injector"
+Injectable = require "Injectable"
 Tracker = require "tracker"
-Factory = require "factory"
 Tracer = require "tracer"
 Event = require "event"
+Type = require "Type"
 
-ReactionInjector = Injector "Reaction"
-ReactionInjector.push "autoStart", yes
+injectable = Injectable.Map
+  types: { autoStart: Boolean }
+  values: { autoStart: yes }
 
-module.exports = Factory "Reaction",
+type = Type "Reaction"
 
-  statics:
+type.createArguments (args) ->
 
-    sync: (options) ->
-      reaction = Reaction options
-      reaction._sync = yes
-      reaction
+  if isType args[0], Function.Kind
+    args[0] = { get: args[0] }
 
-  initArguments: (options) ->
-    options = { get: options } if isType options, Function.Kind
-    [ options ]
+  return args
 
-  optionTypes:
-    keyPath: String.Maybe
-    firstRun: Boolean
-    autoStart: Boolean.Maybe
-    needsChange: Boolean
-    willGet: Function
-    get: Function.Kind
-    willSet: Function
-    didSet: Function.Maybe
+type.optionTypes =
+  keyPath: String.Maybe
+  firstRun: Boolean
+  autoStart: Boolean.Maybe
+  needsChange: Boolean
+  willGet: Function
+  get: Function.Kind
+  willSet: Function
+  didSet: Function.Maybe
 
-  optionDefaults:
-    sync: no
-    firstRun: yes
-    needsChange: yes
-    willGet: emptyFunction.thatReturnsTrue
-    willSet: emptyFunction.thatReturnsTrue
+type.optionDefaults =
+  sync: no
+  firstRun: yes
+  needsChange: yes
+  willGet: emptyFunction.thatReturnsTrue
+  willSet: emptyFunction.thatReturnsTrue
 
-  customValues:
+type.defineProperties
 
-    value: get: ->
-      if Tracker.active
-        @_dep.depend() if @_computation isnt Tracker.currentComputation
-      @_value
+  isActive: get: ->
+    c = @_computation
+    c and c.isActive
 
-    getValue: lazy: ->
-      return => @value
+  value: get: ->
+    if Tracker.active
+      @_dep.depend() if @_computation isnt Tracker.currentComputation
+    @_value
 
-    keyPath: didSet: (keyPath) ->
-      @_computation.keyPath = keyPath if @_computation
+  getValue: lazy: ->
+    return => @value
 
-  initFrozenValues: (options) ->
+  keyPath: didSet: (keyPath) ->
+    @_computation.keyPath = keyPath if @_computation
 
-    didSet: Event options.didSet
+  inject: get: ->
+    injectable.inject
 
-    _dep: new Tracker.Dependency
+type.defineFrozenValues
 
-    _willGet: options.willGet
+  didSet: (options) -> Event options.didSet
 
-    _get: options.get
+  _dep: -> Tracker.Dependency()
 
-    _willSet: options.willSet
+  _willGet: (options) -> options.willGet
 
-    _traceInit: Tracer "Reaction()" if isDev
+  _get: (options) -> options.get
 
-  initValues: (options) ->
+  _willSet: (options) -> options.willSet
 
-    isActive: no
+if isDev
+  type.defineFrozenValues
+    _traceInit: -> Tracer "Reaction()"
 
-    _value: null
+type.defineValues
 
-    _computation: null
+  _value: null
 
-    _sync: no
+  _computation: null
 
-    _firstRun: options.firstRun
+  _sync: no
 
-    _needsChange: options.needsChange
+  _firstRun: (options) -> options.firstRun
 
-    _willNotify: no
+  _needsChange: (options) -> options.needsChange
 
-    _refCount: 1
+  _willNotify: no
 
-  init: (options) ->
-    @keyPath = options.keyPath
-    autoStart = options.autoStart
-    autoStart = ReactionInjector.get "autoStart" if autoStart is undefined
-    @start() if autoStart
+type.initInstance (options) ->
+
+  @keyPath = options.keyPath
+
+  autoStart = options.autoStart
+
+  if autoStart is undefined
+    autoStart = injectable.autoStart
+
+  @start() if autoStart
+
+type.defineStatics
+
+  sync: (options) ->
+    reaction = Reaction options
+    reaction._sync = yes
+    reaction
+
+type.defineMethods
 
   start: ->
     return if @isActive
-    @isActive = yes
-    unless @_computation
-      @_computation = new Tracker.Computation
-        keyPath: @keyPath
-        sync: @_sync
-        func: => @_recompute()
+    @_computation ?= new Tracker.Computation
+      keyPath: @keyPath
+      sync: @_sync
+      func: => @_recompute()
     @_computation.start()
     return
 
@@ -114,14 +128,6 @@ module.exports = Factory "Reaction",
     @isActive = no
     @_computation.stop()
     return
-
-  retain: ->
-    @_refCount += 1
-
-  release: ->
-    return if @_refCount is 0
-    @_refCount -= 1
-    @stop() if @_refCount is 0
 
   _recompute: ->
 
@@ -164,3 +170,5 @@ module.exports = Factory "Reaction",
     Tracker.afterFlush =>
       @_willNotify = no
       @didSet.emit newValue, oldValue
+
+module.exports = Reaction = type.build()
