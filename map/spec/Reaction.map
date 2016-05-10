@@ -1,0 +1,10 @@
+{
+  "version": 3,
+  "file": "Reaction.js",
+  "sourceRoot": "../../spec",
+  "sources": [
+    "Reaction.coffee"
+  ],
+  "names": [],
+  "mappings": ""
+}

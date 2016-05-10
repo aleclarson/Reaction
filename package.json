@@ -1,16 +1,16 @@
 {
   "name": "reaction",
-  "version": "1.0.0",
-  "main": "./js/src/Reaction",
+  "version": "2.0.0",
+  "main": "js/src/Reaction",
   "dependencies": {
     "emptyFunction": "aleclarson/emptyFunction#1.0.0",
-    "event": "aleclarson/event#1.0.0",
-    "factory": "aleclarson/factory#1.0.0",
-    "injector": "aleclarson/injector#1.0.0",
+    "event": "aleclarson/event#2.0.0",
     "isDev": "aleclarson/isDev#1.0.0",
     "tracer": "aleclarson/tracer#1.0.0",
-    "tracker": "aleclarson/tracker#1.0.8",
-    "type-utils": "aleclarson/type-utils#1.0.0"
+    "tracker": "aleclarson/tracker#2.0.0",
+    "type-utils": "aleclarson/type-utils#1.0.0",
+    "Injectable": "aleclarson/Injectable#1.0.0",
+    "Type": "aleclarson/Type#1.0.0"
   },
   "lotus": {
     "plugins": [
