@@ -1,8 +1,6 @@
-var Event, Injectable, Reaction, Tracer, Tracker, Type, assert, assertType, emptyFunction, injectable, isType, ref, setType, type, validateTypes;
+var Event, Injectable, Reaction, Tracer, Tracker, Type, assert, emptyFunction, injectable, type;
 
 require("isDev");
-
-ref = require("type-utils"), isType = ref.isType, setType = ref.setType, assert = ref.assert, assertType = ref.assertType, validateTypes = ref.validateTypes;
 
 emptyFunction = require("emptyFunction");
 
@@ -11,6 +9,8 @@ Injectable = require("Injectable");
 Tracker = require("tracker");
 
 Tracer = require("tracer");
+
+assert = require("assert");
 
 Event = require("event");
 
@@ -28,7 +28,7 @@ injectable = Injectable.Map({
 type = Type("Reaction");
 
 type.createArguments(function(args) {
-  if (isType(args[0], Function.Kind)) {
+  if (args[0] instanceof Function) {
     args[0] = {
       get: args[0]
     };

@@ -1,16 +1,11 @@
 
 require "isDev"
 
-{ isType
-  setType
-  assert
-  assertType
-  validateTypes } = require "type-utils"
-
 emptyFunction = require "emptyFunction"
 Injectable = require "Injectable"
 Tracker = require "tracker"
 Tracer = require "tracer"
+assert = require "assert"
 Event = require "event"
 Type = require "Type"
 
@@ -22,7 +17,7 @@ type = Type "Reaction"
 
 type.createArguments (args) ->
 
-  if isType args[0], Function.Kind
+  if args[0] instanceof Function
     args[0] = { get: args[0] }
 
   return args
