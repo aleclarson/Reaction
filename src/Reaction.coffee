@@ -2,16 +2,11 @@
 require "isDev"
 
 emptyFunction = require "emptyFunction"
-Injectable = require "Injectable"
 Tracker = require "tracker"
 Tracer = require "tracer"
 assert = require "assert"
 Event = require "event"
 Type = require "Type"
-
-injectable = Injectable.Map
-  types: { autoStart: Boolean }
-  values: { autoStart: yes }
 
 type = Type "Reaction"
 
@@ -25,7 +20,6 @@ type.createArguments (args) ->
 type.optionTypes =
   keyPath: String.Maybe
   firstRun: Boolean
-  autoStart: Boolean.Maybe
   needsChange: Boolean
   willGet: Function
   get: Function.Kind
@@ -90,15 +84,8 @@ type.defineValues
   _willNotify: no
 
 type.initInstance (options) ->
-
   @keyPath = options.keyPath
-
-  autoStart = options.autoStart
-
-  if autoStart is undefined
-    autoStart = injectable.autoStart
-
-  @start() if autoStart
+  @start()
 
 type.defineStatics
 
@@ -111,7 +98,7 @@ type.defineMethods
 
   start: ->
     return if @isActive
-    @_computation ?= new Tracker.Computation
+    @_computation ?= Tracker.Computation
       keyPath: @keyPath
       sync: @_sync
       func: => @_recompute()
@@ -126,7 +113,7 @@ type.defineMethods
 
   _recompute: ->
 
-    assert Tracker.active, "Tracker must be active!"
+    assert Tracker.isActive, "Tracker must be active!"
 
     return unless @_willGet()
 

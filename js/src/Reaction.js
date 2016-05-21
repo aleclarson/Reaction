@@ -1,10 +1,8 @@
-var Event, Injectable, Reaction, Tracer, Tracker, Type, assert, emptyFunction, injectable, type;
+var Event, Reaction, Tracer, Tracker, Type, assert, emptyFunction, type;
 
 require("isDev");
 
 emptyFunction = require("emptyFunction");
-
-Injectable = require("Injectable");
 
 Tracker = require("tracker");
 
@@ -15,15 +13,6 @@ assert = require("assert");
 Event = require("event");
 
 Type = require("Type");
-
-injectable = Injectable.Map({
-  types: {
-    autoStart: Boolean
-  },
-  values: {
-    autoStart: true
-  }
-});
 
 type = Type("Reaction");
 
@@ -39,7 +28,6 @@ type.createArguments(function(args) {
 type.optionTypes = {
   keyPath: String.Maybe,
   firstRun: Boolean,
-  autoStart: Boolean.Maybe,
   needsChange: Boolean,
   willGet: Function,
   get: Function.Kind,
@@ -136,15 +124,8 @@ type.defineValues({
 });
 
 type.initInstance(function(options) {
-  var autoStart;
   this.keyPath = options.keyPath;
-  autoStart = options.autoStart;
-  if (autoStart === void 0) {
-    autoStart = injectable.autoStart;
-  }
-  if (autoStart) {
-    return this.start();
-  }
+  return this.start();
 });
 
 type.defineStatics({
@@ -162,7 +143,7 @@ type.defineMethods({
       return;
     }
     if (this._computation == null) {
-      this._computation = new Tracker.Computation({
+      this._computation = Tracker.Computation({
         keyPath: this.keyPath,
         sync: this._sync,
         func: (function(_this) {
@@ -183,7 +164,7 @@ type.defineMethods({
   },
   _recompute: function() {
     var newValue, oldValue;
-    assert(Tracker.active, "Tracker must be active!");
+    assert(Tracker.isActive, "Tracker must be active!");
     if (!this._willGet()) {
       return;
     }
