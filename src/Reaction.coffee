@@ -2,6 +2,7 @@
 require "isDev"
 
 emptyFunction = require "emptyFunction"
+getArgProp = require "getArgProp"
 Tracker = require "tracker"
 Tracer = require "tracer"
 assert = require "assert"
@@ -27,7 +28,6 @@ type.optionTypes =
   didSet: Function.Maybe
 
 type.optionDefaults =
-  sync: no
   firstRun: yes
   needsChange: yes
   willGet: emptyFunction.thatReturnsTrue
@@ -40,8 +40,8 @@ type.defineProperties
     c and c.isActive
 
   value: get: ->
-    if Tracker.active
-      @_dep.depend() if @_computation isnt Tracker.currentComputation
+    if Tracker.active and @_computation is Tracker.currentComputation
+      @_dep.depend()
     @_value
 
   getValue: lazy: ->
@@ -50,20 +50,17 @@ type.defineProperties
   keyPath: didSet: (keyPath) ->
     @_computation.keyPath = keyPath if @_computation
 
-  inject: get: ->
-    injectable.inject
-
 type.defineFrozenValues
 
   didSet: (options) -> Event options.didSet
 
   _dep: -> Tracker.Dependency()
 
-  _willGet: (options) -> options.willGet
+  _willGet: getArgProp "willGet"
 
-  _get: (options) -> options.get
+  _get: getArgProp "get"
 
-  _willSet: (options) -> options.willSet
+  _willSet: getArgProp "willSet"
 
 if isDev
   type.defineFrozenValues
@@ -75,11 +72,11 @@ type.defineValues
 
   _computation: null
 
-  _sync: no
+  _async: (_, async = yes) -> async
 
-  _firstRun: (options) -> options.firstRun
+  _firstRun: getArgProp "firstRun"
 
-  _needsChange: (options) -> options.needsChange
+  _needsChange: getArgProp "needsChange"
 
   _willNotify: no
 
@@ -90,9 +87,7 @@ type.initInstance (options) ->
 type.defineStatics
 
   sync: (options) ->
-    reaction = Reaction options
-    reaction._sync = yes
-    reaction
+    return Reaction options, no
 
 type.defineMethods
 
@@ -100,7 +95,7 @@ type.defineMethods
     return if @isActive
     @_computation ?= Tracker.Computation
       keyPath: @keyPath
-      sync: @_sync
+      async: @_async
       func: => @_recompute()
     @_computation.start()
     return
@@ -144,7 +139,7 @@ type.defineMethods
       return @didSet.emit newValue, oldValue
 
     # Synchronous reactions always call listeners immediately.
-    return @didSet.emit newValue, oldValue if @_sync
+    return @didSet.emit newValue, oldValue if not @_async
 
     # Asynchronous reactions batch any changes. Prevent duplicate events.
     return if @_willNotify

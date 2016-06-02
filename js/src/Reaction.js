@@ -1,8 +1,10 @@
-var Event, Reaction, Tracer, Tracker, Type, assert, emptyFunction, type;
+var Event, Reaction, Tracer, Tracker, Type, assert, emptyFunction, getArgProp, type;
 
 require("isDev");
 
 emptyFunction = require("emptyFunction");
+
+getArgProp = require("getArgProp");
 
 Tracker = require("tracker");
 
@@ -36,7 +38,6 @@ type.optionTypes = {
 };
 
 type.optionDefaults = {
-  sync: false,
   firstRun: true,
   needsChange: true,
   willGet: emptyFunction.thatReturnsTrue,
@@ -53,10 +54,8 @@ type.defineProperties({
   },
   value: {
     get: function() {
-      if (Tracker.active) {
-        if (this._computation !== Tracker.currentComputation) {
-          this._dep.depend();
-        }
+      if (Tracker.active && this._computation === Tracker.currentComputation) {
+        this._dep.depend();
       }
       return this._value;
     }
@@ -76,11 +75,6 @@ type.defineProperties({
         return this._computation.keyPath = keyPath;
       }
     }
-  },
-  inject: {
-    get: function() {
-      return injectable.inject;
-    }
   }
 });
 
@@ -91,15 +85,9 @@ type.defineFrozenValues({
   _dep: function() {
     return Tracker.Dependency();
   },
-  _willGet: function(options) {
-    return options.willGet;
-  },
-  _get: function(options) {
-    return options.get;
-  },
-  _willSet: function(options) {
-    return options.willSet;
-  }
+  _willGet: getArgProp("willGet"),
+  _get: getArgProp("get"),
+  _willSet: getArgProp("willSet")
 });
 
 if (isDev) {
@@ -113,13 +101,14 @@ if (isDev) {
 type.defineValues({
   _value: null,
   _computation: null,
-  _sync: false,
-  _firstRun: function(options) {
-    return options.firstRun;
+  _async: function(_, async) {
+    if (async == null) {
+      async = true;
+    }
+    return async;
   },
-  _needsChange: function(options) {
-    return options.needsChange;
-  },
+  _firstRun: getArgProp("firstRun"),
+  _needsChange: getArgProp("needsChange"),
   _willNotify: false
 });
 
@@ -130,10 +119,7 @@ type.initInstance(function(options) {
 
 type.defineStatics({
   sync: function(options) {
-    var reaction;
-    reaction = Reaction(options);
-    reaction._sync = true;
-    return reaction;
+    return Reaction(options, false);
   }
 });
 
@@ -145,7 +131,7 @@ type.defineMethods({
     if (this._computation == null) {
       this._computation = Tracker.Computation({
         keyPath: this.keyPath,
-        sync: this._sync,
+        async: this._async,
         func: (function(_this) {
           return function() {
             return _this._recompute();
@@ -193,7 +179,7 @@ type.defineMethods({
       }
       return this.didSet.emit(newValue, oldValue);
     }
-    if (this._sync) {
+    if (!this._async) {
       return this.didSet.emit(newValue, oldValue);
     }
     if (this._willNotify) {
