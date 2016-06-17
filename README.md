@@ -1,5 +1,5 @@
 
-# reaction 2.0.0 ![stable](https://img.shields.io/badge/stability-stable-4EBA0F.svg?style=flat)
+# Reaction 1.0.0 ![stable](https://img.shields.io/badge/stability-stable-4EBA0F.svg?style=flat)
 
 The `Reaction` class wraps around `Tracker.Computation` (from [aleclarson/tracker](https://github.com/aleclarson/tracker)).
 

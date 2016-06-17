@@ -12,11 +12,21 @@ Tracer = require("tracer");
 
 assert = require("assert");
 
-Event = require("event");
+Event = require("Event");
 
 Type = require("Type");
 
 type = Type("Reaction");
+
+type.defineStatics({
+  sync: function(options) {
+    if (options == null) {
+      options = {};
+    }
+    options.async = false;
+    return Reaction(options);
+  }
+});
 
 type.createArguments(function(args) {
   if (args[0] instanceof Function) {
@@ -27,22 +37,80 @@ type.createArguments(function(args) {
   return args;
 });
 
-type.optionTypes = {
-  keyPath: String.Maybe,
-  firstRun: Boolean,
-  needsChange: Boolean,
-  willGet: Function,
-  get: Function.Kind,
-  willSet: Function,
-  didSet: Function.Maybe
-};
+type.defineOptions({
+  keyPath: {
+    type: String,
+    required: false
+  },
+  async: {
+    type: Boolean,
+    "default": true
+  },
+  firstRun: {
+    type: Boolean,
+    "default": true
+  },
+  needsChange: {
+    type: Boolean,
+    "default": true
+  },
+  willGet: {
+    type: Function,
+    "default": emptyFunction.thatReturnsTrue
+  },
+  get: {
+    type: Function.Kind,
+    required: true
+  },
+  willSet: {
+    type: Function,
+    "default": emptyFunction.thatReturnsTrue
+  },
+  didSet: {
+    type: Function,
+    required: false
+  }
+});
 
-type.optionDefaults = {
-  firstRun: true,
-  needsChange: true,
-  willGet: emptyFunction.thatReturnsTrue,
-  willSet: emptyFunction.thatReturnsTrue
-};
+type.defineFrozenValues({
+  didSet: function(options) {
+    return Event(options.didSet);
+  },
+  _dep: function() {
+    return Tracker.Dependency();
+  },
+  _willGet: getArgProp("willGet"),
+  _get: getArgProp("get"),
+  _willSet: getArgProp("willSet"),
+  _tracers: function() {
+    if (isDev) {
+      return {};
+    }
+  }
+});
+
+if (isDev) {
+  type.defineFrozenValues({
+    _traceInit: function() {
+      return Tracer("Reaction()");
+    }
+  });
+}
+
+type.defineValues({
+  _value: null,
+  _computation: null,
+  _async: getArgProp("async"),
+  _firstRun: getArgProp("firstRun"),
+  _needsChange: getArgProp("needsChange"),
+  _willNotify: false
+});
+
+type.initInstance(function(options) {
+  isDev && (this._tracers.init = Tracer("Reaction()"));
+  this.keyPath = options.keyPath;
+  return this.start();
+});
 
 type.defineProperties({
   isActive: {
@@ -75,51 +143,6 @@ type.defineProperties({
         return this._computation.keyPath = keyPath;
       }
     }
-  }
-});
-
-type.defineFrozenValues({
-  didSet: function(options) {
-    return Event(options.didSet);
-  },
-  _dep: function() {
-    return Tracker.Dependency();
-  },
-  _willGet: getArgProp("willGet"),
-  _get: getArgProp("get"),
-  _willSet: getArgProp("willSet")
-});
-
-if (isDev) {
-  type.defineFrozenValues({
-    _traceInit: function() {
-      return Tracer("Reaction()");
-    }
-  });
-}
-
-type.defineValues({
-  _value: null,
-  _computation: null,
-  _async: function(_, async) {
-    if (async == null) {
-      async = true;
-    }
-    return async;
-  },
-  _firstRun: getArgProp("firstRun"),
-  _needsChange: getArgProp("needsChange"),
-  _willNotify: false
-});
-
-type.initInstance(function(options) {
-  this.keyPath = options.keyPath;
-  return this.start();
-});
-
-type.defineStatics({
-  sync: function(options) {
-    return Reaction(options, false);
   }
 });
 

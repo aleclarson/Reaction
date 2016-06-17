@@ -6,10 +6,16 @@ getArgProp = require "getArgProp"
 Tracker = require "tracker"
 Tracer = require "tracer"
 assert = require "assert"
-Event = require "event"
+Event = require "Event"
 Type = require "Type"
 
 type = Type "Reaction"
+
+type.defineStatics
+
+  sync: (options = {}) ->
+    options.async = no
+    return Reaction options
 
 type.createArguments (args) ->
 
@@ -18,20 +24,79 @@ type.createArguments (args) ->
 
   return args
 
-type.optionTypes =
-  keyPath: String.Maybe
-  firstRun: Boolean
-  needsChange: Boolean
-  willGet: Function
-  get: Function.Kind
-  willSet: Function
-  didSet: Function.Maybe
+type.defineOptions
 
-type.optionDefaults =
-  firstRun: yes
-  needsChange: yes
-  willGet: emptyFunction.thatReturnsTrue
-  willSet: emptyFunction.thatReturnsTrue
+  keyPath:
+    type: String
+    required: no
+
+  async:
+    type: Boolean
+    default: yes
+
+  firstRun:
+    type: Boolean
+    default: yes
+
+  needsChange:
+    type: Boolean
+    default: yes
+
+  willGet:
+    type: Function
+    default: emptyFunction.thatReturnsTrue
+
+  get:
+    type: Function.Kind
+    required: yes
+
+  willSet:
+    type: Function
+    default: emptyFunction.thatReturnsTrue
+
+  didSet:
+    type: Function
+    required: no
+
+type.defineFrozenValues
+
+  didSet: (options) -> Event options.didSet
+
+  _dep: -> Tracker.Dependency()
+
+  _willGet: getArgProp "willGet"
+
+  _get: getArgProp "get"
+
+  _willSet: getArgProp "willSet"
+
+  _tracers: -> {} if isDev
+
+if isDev
+  type.defineFrozenValues
+    _traceInit: -> Tracer "Reaction()"
+
+type.defineValues
+
+  _value: null
+
+  _computation: null
+
+  _async: getArgProp "async"
+
+  _firstRun: getArgProp "firstRun"
+
+  _needsChange: getArgProp "needsChange"
+
+  _willNotify: no
+
+type.initInstance (options) ->
+
+  isDev and @_tracers.init = Tracer "Reaction()"
+
+  @keyPath = options.keyPath
+
+  @start()
 
 type.defineProperties
 
@@ -49,45 +114,6 @@ type.defineProperties
 
   keyPath: didSet: (keyPath) ->
     @_computation.keyPath = keyPath if @_computation
-
-type.defineFrozenValues
-
-  didSet: (options) -> Event options.didSet
-
-  _dep: -> Tracker.Dependency()
-
-  _willGet: getArgProp "willGet"
-
-  _get: getArgProp "get"
-
-  _willSet: getArgProp "willSet"
-
-if isDev
-  type.defineFrozenValues
-    _traceInit: -> Tracer "Reaction()"
-
-type.defineValues
-
-  _value: null
-
-  _computation: null
-
-  _async: (_, async = yes) -> async
-
-  _firstRun: getArgProp "firstRun"
-
-  _needsChange: getArgProp "needsChange"
-
-  _willNotify: no
-
-type.initInstance (options) ->
-  @keyPath = options.keyPath
-  @start()
-
-type.defineStatics
-
-  sync: (options) ->
-    return Reaction options, no
 
 type.defineMethods
 
