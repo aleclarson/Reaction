@@ -1,10 +1,7 @@
 
-require "isDev"
-
 emptyFunction = require "emptyFunction"
 getArgProp = require "getArgProp"
 Tracker = require "tracker"
-Tracer = require "tracer"
 assert = require "assert"
 Event = require "Event"
 Type = require "Type"
@@ -23,6 +20,8 @@ type.createArguments (args) ->
     args[0] = { get: args[0] }
 
   return args
+
+type.trace()
 
 type.defineOptions
 
@@ -70,12 +69,6 @@ type.defineFrozenValues
 
   _willSet: getArgProp "willSet"
 
-  _tracers: -> {} if isDev
-
-if isDev
-  type.defineFrozenValues
-    _traceInit: -> Tracer "Reaction()"
-
 type.defineValues
 
   _value: null
@@ -92,8 +85,6 @@ type.defineValues
 
 type.initInstance (options) ->
 
-  isDev and @_tracers.init = Tracer "Reaction()"
-
   @keyPath = options.keyPath
 
   @start()
@@ -101,12 +92,10 @@ type.initInstance (options) ->
 type.defineProperties
 
   isActive: get: ->
-    c = @_computation
-    c and c.isActive
+    @_computation and @_computation.isActive
 
   value: get: ->
-    if Tracker.active and @_computation is Tracker.currentComputation
-      @_dep.depend()
+    @_dep.depend() if @isActive
     @_value
 
   getValue: lazy: ->
@@ -127,8 +116,7 @@ type.defineMethods
     return
 
   stop: ->
-    return unless @isActive
-    @isActive = no
+    return if not @isActive
     @_computation.stop()
     return
 
@@ -136,7 +124,7 @@ type.defineMethods
 
     assert Tracker.isActive, "Tracker must be active!"
 
-    return unless @_willGet()
+    return if not @_willGet()
 
     oldValue = @_value
     newValue = @_get()
@@ -146,20 +134,20 @@ type.defineMethods
 
   _notify: (newValue, oldValue) ->
 
-    unless @_computation.firstRun
+    if not @_computation.isFirstRun
 
       # Some reactions need the value to differ for a change to be recognized.
       return if @_needsChange and (newValue is oldValue)
 
-    return unless @_willSet newValue, oldValue
+    return if not @_willSet newValue, oldValue
 
     @_value = newValue
     @_dep.changed()
 
-    if @_computation.firstRun
+    if @_computation.isFirstRun
 
       # Some reactions dont notify their listeners on the first run.
-      return unless @_firstRun
+      return if not @_firstRun
 
       # Listeners are called immediately on the first run.
       return @didSet.emit newValue, oldValue

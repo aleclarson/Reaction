@@ -8,8 +8,6 @@
     "assert": "aleclarson/assert#1.0.0",
     "emptyFunction": "aleclarson/emptyFunction#1.0.0",
     "getArgProp": "aleclarson/getArgProp#1.0.0",
-    "isDev": "aleclarson/isDev#1.0.0",
-    "tracer": "aleclarson/tracer#1.0.0",
     "tracker": "aleclarson/tracker#2.0.0"
   },
   "lotus": {

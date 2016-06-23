@@ -1,14 +1,10 @@
-var Event, Reaction, Tracer, Tracker, Type, assert, emptyFunction, getArgProp, type;
-
-require("isDev");
+var Event, Reaction, Tracker, Type, assert, emptyFunction, getArgProp, type;
 
 emptyFunction = require("emptyFunction");
 
 getArgProp = require("getArgProp");
 
 Tracker = require("tracker");
-
-Tracer = require("tracer");
 
 assert = require("assert");
 
@@ -36,6 +32,8 @@ type.createArguments(function(args) {
   }
   return args;
 });
+
+type.trace();
 
 type.defineOptions({
   keyPath: {
@@ -81,21 +79,8 @@ type.defineFrozenValues({
   },
   _willGet: getArgProp("willGet"),
   _get: getArgProp("get"),
-  _willSet: getArgProp("willSet"),
-  _tracers: function() {
-    if (isDev) {
-      return {};
-    }
-  }
+  _willSet: getArgProp("willSet")
 });
-
-if (isDev) {
-  type.defineFrozenValues({
-    _traceInit: function() {
-      return Tracer("Reaction()");
-    }
-  });
-}
 
 type.defineValues({
   _value: null,
@@ -107,7 +92,6 @@ type.defineValues({
 });
 
 type.initInstance(function(options) {
-  isDev && (this._tracers.init = Tracer("Reaction()"));
   this.keyPath = options.keyPath;
   return this.start();
 });
@@ -115,14 +99,12 @@ type.initInstance(function(options) {
 type.defineProperties({
   isActive: {
     get: function() {
-      var c;
-      c = this._computation;
-      return c && c.isActive;
+      return this._computation && this._computation.isActive;
     }
   },
   value: {
     get: function() {
-      if (Tracker.active && this._computation === Tracker.currentComputation) {
+      if (this.isActive) {
         this._dep.depend();
       }
       return this._value;
@@ -168,7 +150,6 @@ type.defineMethods({
     if (!this.isActive) {
       return;
     }
-    this.isActive = false;
     this._computation.stop();
   },
   _recompute: function() {
@@ -186,7 +167,7 @@ type.defineMethods({
     })(this));
   },
   _notify: function(newValue, oldValue) {
-    if (!this._computation.firstRun) {
+    if (!this._computation.isFirstRun) {
       if (this._needsChange && (newValue === oldValue)) {
         return;
       }
@@ -196,7 +177,7 @@ type.defineMethods({
     }
     this._value = newValue;
     this._dep.changed();
-    if (this._computation.firstRun) {
+    if (this._computation.isFirstRun) {
       if (!this._firstRun) {
         return;
       }
