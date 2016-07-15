@@ -1,8 +1,8 @@
-var Event, Reaction, Tracker, Type, assert, emptyFunction, getArgProp, type;
+var Event, Reaction, Tracker, Type, assert, emptyFunction, fromArgs, type;
 
 emptyFunction = require("emptyFunction");
 
-getArgProp = require("getArgProp");
+fromArgs = require("fromArgs");
 
 Tracker = require("tracker");
 
@@ -77,17 +77,17 @@ type.defineFrozenValues({
   _dep: function() {
     return Tracker.Dependency();
   },
-  _willGet: getArgProp("willGet"),
-  _get: getArgProp("get"),
-  _willSet: getArgProp("willSet")
+  _willGet: fromArgs("willGet"),
+  _get: fromArgs("get"),
+  _willSet: fromArgs("willSet")
 });
 
 type.defineValues({
   _value: null,
   _computation: null,
-  _async: getArgProp("async"),
-  _firstRun: getArgProp("firstRun"),
-  _needsChange: getArgProp("needsChange"),
+  _async: fromArgs("async"),
+  _firstRun: fromArgs("firstRun"),
+  _needsChange: fromArgs("needsChange"),
   _willNotify: false
 });
 
@@ -201,4 +201,4 @@ type.defineMethods({
 
 module.exports = Reaction = type.build();
 
-//# sourceMappingURL=../../map/src/Reaction.map
+//# sourceMappingURL=map/Reaction.map

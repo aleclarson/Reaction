@@ -1,6 +1,6 @@
 
 emptyFunction = require "emptyFunction"
-getArgProp = require "getArgProp"
+fromArgs = require "fromArgs"
 Tracker = require "tracker"
 assert = require "assert"
 Event = require "Event"
@@ -63,11 +63,11 @@ type.defineFrozenValues
 
   _dep: -> Tracker.Dependency()
 
-  _willGet: getArgProp "willGet"
+  _willGet: fromArgs "willGet"
 
-  _get: getArgProp "get"
+  _get: fromArgs "get"
 
-  _willSet: getArgProp "willSet"
+  _willSet: fromArgs "willSet"
 
 type.defineValues
 
@@ -75,11 +75,11 @@ type.defineValues
 
   _computation: null
 
-  _async: getArgProp "async"
+  _async: fromArgs "async"
 
-  _firstRun: getArgProp "firstRun"
+  _firstRun: fromArgs "firstRun"
 
-  _needsChange: getArgProp "needsChange"
+  _needsChange: fromArgs "needsChange"
 
   _willNotify: no
 
