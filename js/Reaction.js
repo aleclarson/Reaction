@@ -14,14 +14,17 @@ Type = require("Type");
 
 type = Type("Reaction");
 
-type.defineStatics({
-  sync: function(options) {
-    if (options == null) {
-      options = {};
-    }
-    options.async = false;
-    return Reaction(options);
-  }
+type.trace();
+
+type.defineOptions({
+  keyPath: String,
+  async: Boolean.withDefault(true),
+  firstRun: Boolean.withDefault(true),
+  needsChange: Boolean.withDefault(true),
+  willGet: Function.withDefault(emptyFunction.thatReturnsTrue),
+  get: Function.Kind.isRequired,
+  willSet: Function.withDefault(emptyFunction.thatReturnsTrue),
+  didSet: Function
 });
 
 type.createArguments(function(args) {
@@ -31,43 +34,6 @@ type.createArguments(function(args) {
     };
   }
   return args;
-});
-
-type.trace();
-
-type.defineOptions({
-  keyPath: {
-    type: String,
-    required: false
-  },
-  async: {
-    type: Boolean,
-    "default": true
-  },
-  firstRun: {
-    type: Boolean,
-    "default": true
-  },
-  needsChange: {
-    type: Boolean,
-    "default": true
-  },
-  willGet: {
-    type: Function,
-    "default": emptyFunction.thatReturnsTrue
-  },
-  get: {
-    type: Function.Kind,
-    required: true
-  },
-  willSet: {
-    type: Function,
-    "default": emptyFunction.thatReturnsTrue
-  },
-  didSet: {
-    type: Function,
-    required: false
-  }
 });
 
 type.defineFrozenValues({
@@ -88,7 +54,7 @@ type.defineValues({
   _async: fromArgs("async"),
   _firstRun: fromArgs("firstRun"),
   _needsChange: fromArgs("needsChange"),
-  _willNotify: false
+  _notifying: false
 });
 
 type.initInstance(function(options) {
@@ -96,20 +62,19 @@ type.initInstance(function(options) {
   return this.start();
 });
 
+type.defineGetters({
+  isActive: function() {
+    return this._computation && this._computation.isActive;
+  },
+  value: function() {
+    if (this.isActive) {
+      this._dep.depend();
+    }
+    return this._value;
+  }
+});
+
 type.defineProperties({
-  isActive: {
-    get: function() {
-      return this._computation && this._computation.isActive;
-    }
-  },
-  value: {
-    get: function() {
-      if (this.isActive) {
-        this._dep.depend();
-      }
-      return this._value;
-    }
-  },
   getValue: {
     lazy: function() {
       return (function(_this) {
@@ -121,9 +86,7 @@ type.defineProperties({
   },
   keyPath: {
     didSet: function(keyPath) {
-      if (this._computation) {
-        return this._computation.keyPath = keyPath;
-      }
+      return this._computation && (this._computation.keyPath = keyPath);
     }
   }
 });
@@ -139,6 +102,7 @@ type.defineMethods({
         async: this._async,
         func: (function(_this) {
           return function() {
+            assert(Tracker.isActive, "Tracker must be active!");
             return _this._recompute();
           };
         })(this)
@@ -154,7 +118,6 @@ type.defineMethods({
   },
   _recompute: function() {
     var newValue, oldValue;
-    assert(Tracker.isActive, "Tracker must be active!");
     if (!this._willGet()) {
       return;
     }
@@ -162,40 +125,64 @@ type.defineMethods({
     newValue = this._get();
     return Tracker.nonreactive((function(_this) {
       return function() {
+        return _this._update(newValue, oldValue);
+      };
+    })(this));
+  },
+  _update: function(newValue, oldValue) {
+    if (this._willUpdate(newValue, oldValue)) {
+      this._value = newValue;
+      this._didUpdate(newValue, oldValue);
+    }
+  },
+  _willUpdate: function(newValue, oldValue) {
+    if (this._computation.isFirstRun) {
+      return this._willSet(newValue);
+    }
+    if (this._needsChange && (newValue === oldValue)) {
+      return false;
+    }
+    return this._willSet(newValue, oldValue);
+  },
+  _didUpdate: function(newValue, oldValue) {
+    if (this._computation.isFirstRun) {
+      if (!this._firstRun) {
+        return;
+      }
+      return this._notify(newValue);
+    }
+    if (!this._async) {
+      return this._notify(newValue, oldValue);
+    }
+    if (this._notifying) {
+      return;
+    }
+    this._notifying = true;
+    return Tracker.afterFlush((function(_this) {
+      return function() {
+        _this._notifying = false;
         return _this._notify(newValue, oldValue);
       };
     })(this));
   },
   _notify: function(newValue, oldValue) {
-    if (!this._computation.isFirstRun) {
-      if (this._needsChange && (newValue === oldValue)) {
-        return;
-      }
-    }
-    if (!this._willSet(newValue, oldValue)) {
-      return;
-    }
-    this._value = newValue;
     this._dep.changed();
-    if (this._computation.isFirstRun) {
-      if (!this._firstRun) {
-        return;
-      }
-      return this.didSet.emit(newValue, oldValue);
-    }
-    if (!this._async) {
-      return this.didSet.emit(newValue, oldValue);
-    }
-    if (this._willNotify) {
-      return;
-    }
-    this._willNotify = true;
-    return Tracker.afterFlush((function(_this) {
-      return function() {
-        _this._willNotify = false;
-        return _this.didSet.emit(newValue, oldValue);
+    return this.didSet.emit(newValue, oldValue);
+  }
+});
+
+type.defineStatics({
+  sync: function() {
+    var options;
+    if (arguments[0] instanceof Function) {
+      options = {
+        get: arguments[0]
       };
-    })(this));
+    } else {
+      options = arguments[0] || {};
+    }
+    options.async = false;
+    return Reaction(options);
   }
 });
 

@@ -2,6 +2,11 @@
   "name": "Reaction",
   "version": "1.0.0",
   "main": "js/Reaction",
+  "lotus": {
+    "plugins": [
+      "lotus-coffee"
+    ]
+  },
   "dependencies": {
     "Event": "aleclarson/Event#2.0.0",
     "Type": "aleclarson/Type#1.1.0",
@@ -10,9 +15,7 @@
     "fromArgs": "aleclarson/fromArgs#1.0.0",
     "tracker": "aleclarson/tracker#2.0.0"
   },
-  "lotus": {
-    "plugins": [
-      "lotus-coffee"
-    ]
+  "devDependencies": {
+    "ReactiveVar": "aleclarson/ReactiveVar#2.0.0"
   }
 }

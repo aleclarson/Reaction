@@ -8,11 +8,17 @@ Type = require "Type"
 
 type = Type "Reaction"
 
-type.defineStatics
+type.trace()
 
-  sync: (options = {}) ->
-    options.async = no
-    return Reaction options
+type.defineOptions
+  keyPath: String
+  async: Boolean.withDefault yes
+  firstRun: Boolean.withDefault yes
+  needsChange: Boolean.withDefault yes
+  willGet: Function.withDefault emptyFunction.thatReturnsTrue
+  get: Function.Kind.isRequired
+  willSet: Function.withDefault emptyFunction.thatReturnsTrue
+  didSet: Function
 
 type.createArguments (args) ->
 
@@ -20,42 +26,6 @@ type.createArguments (args) ->
     args[0] = { get: args[0] }
 
   return args
-
-type.trace()
-
-type.defineOptions
-
-  keyPath:
-    type: String
-    required: no
-
-  async:
-    type: Boolean
-    default: yes
-
-  firstRun:
-    type: Boolean
-    default: yes
-
-  needsChange:
-    type: Boolean
-    default: yes
-
-  willGet:
-    type: Function
-    default: emptyFunction.thatReturnsTrue
-
-  get:
-    type: Function.Kind
-    required: yes
-
-  willSet:
-    type: Function
-    default: emptyFunction.thatReturnsTrue
-
-  didSet:
-    type: Function
-    required: no
 
 type.defineFrozenValues
 
@@ -81,7 +51,7 @@ type.defineValues
 
   _needsChange: fromArgs "needsChange"
 
-  _willNotify: no
+  _notifying: no
 
 type.initInstance (options) ->
 
@@ -89,20 +59,22 @@ type.initInstance (options) ->
 
   @start()
 
-type.defineProperties
+type.defineGetters
 
-  isActive: get: ->
+  isActive: ->
     @_computation and @_computation.isActive
 
-  value: get: ->
+  value: ->
     @_dep.depend() if @isActive
     @_value
+
+type.defineProperties
 
   getValue: lazy: ->
     return => @value
 
   keyPath: didSet: (keyPath) ->
-    @_computation.keyPath = keyPath if @_computation
+    @_computation and @_computation.keyPath = keyPath
 
 type.defineMethods
 
@@ -111,7 +83,9 @@ type.defineMethods
     @_computation ?= Tracker.Computation
       keyPath: @keyPath
       async: @_async
-      func: => @_recompute()
+      func: =>
+        assert Tracker.isActive, "Tracker must be active!"
+        @_recompute()
     @_computation.start()
     return
 
@@ -121,28 +95,24 @@ type.defineMethods
     return
 
   _recompute: ->
-
-    assert Tracker.isActive, "Tracker must be active!"
-
     return if not @_willGet()
-
     oldValue = @_value
     newValue = @_get()
-
     Tracker.nonreactive =>
-      @_notify newValue, oldValue
+      @_update newValue, oldValue
 
-  _notify: (newValue, oldValue) ->
+  _update: (newValue, oldValue) ->
+    if @_willUpdate newValue, oldValue
+      @_value = newValue
+      @_didUpdate newValue, oldValue
+    return
 
-    if not @_computation.isFirstRun
+  _willUpdate: (newValue, oldValue) ->
+    return @_willSet newValue if @_computation.isFirstRun
+    return no if @_needsChange and (newValue is oldValue)
+    return @_willSet newValue, oldValue
 
-      # Some reactions need the value to differ for a change to be recognized.
-      return if @_needsChange and (newValue is oldValue)
-
-    return if not @_willSet newValue, oldValue
-
-    @_value = newValue
-    @_dep.changed()
+  _didUpdate: (newValue, oldValue) ->
 
     if @_computation.isFirstRun
 
@@ -150,16 +120,30 @@ type.defineMethods
       return if not @_firstRun
 
       # Listeners are called immediately on the first run.
-      return @didSet.emit newValue, oldValue
+      return @_notify newValue
 
-    # Synchronous reactions always call listeners immediately.
-    return @didSet.emit newValue, oldValue if not @_async
+    # Listeners are always called immediately for synchronous reactions.
+    if not @_async
+      return @_notify newValue, oldValue
 
     # Asynchronous reactions batch any changes. Prevent duplicate events.
-    return if @_willNotify
-    @_willNotify = yes
+    return if @_notifying
+    @_notifying = yes
     Tracker.afterFlush =>
-      @_willNotify = no
-      @didSet.emit newValue, oldValue
+      @_notifying = no
+      @_notify newValue, oldValue
+
+  _notify: (newValue, oldValue) ->
+    @_dep.changed()
+    @didSet.emit newValue, oldValue
+
+type.defineStatics
+
+  sync: ->
+    if arguments[0] instanceof Function
+      options = { get: arguments[0] }
+    else options = arguments[0] or {}
+    options.async = no
+    return Reaction options
 
 module.exports = Reaction = type.build()
