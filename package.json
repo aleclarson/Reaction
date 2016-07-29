@@ -1,0 +1,21 @@
+{
+  "name": "Reaction",
+  "version": "1.0.0",
+  "main": "js/Reaction",
+  "lotus": {
+    "plugins": [
+      "lotus-coffee"
+    ]
+  },
+  "dependencies": {
+    "Event": "aleclarson/Event#2.0.1",
+    "Type": "aleclarson/Type#1.1.0",
+    "assert": "aleclarson/assert#1.0.0",
+    "emptyFunction": "aleclarson/emptyFunction#1.0.0",
+    "fromArgs": "aleclarson/fromArgs#1.0.0",
+    "tracker": "aleclarson/tracker#2.0.0"
+  },
+  "devDependencies": {
+    "ReactiveVar": "aleclarson/ReactiveVar#2.0.0"
+  }
+}
