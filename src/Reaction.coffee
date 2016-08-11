@@ -1,6 +1,5 @@
 
 emptyFunction = require "emptyFunction"
-fromArgs = require "fromArgs"
 Tracker = require "tracker"
 assert = require "assert"
 Event = require "Event"
@@ -27,29 +26,29 @@ type.createArguments (args) ->
 
   return args
 
-type.defineFrozenValues
+type.defineFrozenValues (options) ->
 
-  didSet: (options) -> Event options.didSet
+  didSet: Event options.didSet
 
-  _dep: -> Tracker.Dependency()
+  _dep: Tracker.Dependency()
 
-  _willGet: fromArgs "willGet"
+  _willGet: options.willGet
 
-  _get: fromArgs "get"
+  _get: options.get
 
-  _willSet: fromArgs "willSet"
+  _willSet: options.willSet
 
-type.defineValues
+type.defineValues (options) ->
 
   _value: null
 
   _computation: null
 
-  _async: fromArgs "async"
+  _async: options.async
 
-  _firstRun: fromArgs "firstRun"
+  _firstRun: options.firstRun
 
-  _needsChange: fromArgs "needsChange"
+  _needsChange: options.needsChange
 
   _notifying: no
 
@@ -62,11 +61,12 @@ type.initInstance (options) ->
 type.defineGetters
 
   isActive: ->
-    @_computation and @_computation.isActive
+    return no if not @_computation
+    return @_computation.isActive
 
   value: ->
-    @_dep.depend() if @isActive
-    @_value
+    Tracker.isActive and @_dep.depend()
+    return @_value
 
 type.defineProperties
 
@@ -83,9 +83,7 @@ type.defineMethods
     @_computation ?= Tracker.Computation
       keyPath: @keyPath
       async: @_async
-      func: =>
-        assert Tracker.isActive, "Tracker must be active!"
-        @_recompute()
+      func: => @_recompute()
     @_computation.start()
     return
 
@@ -95,6 +93,7 @@ type.defineMethods
     return
 
   _recompute: ->
+    @DEBUG and log.it @__name + "._willGet()"
     return if not @_willGet()
     oldValue = @_value
     newValue = @_get()
@@ -102,8 +101,10 @@ type.defineMethods
       @_update newValue, oldValue
 
   _update: (newValue, oldValue) ->
+    @DEBUG and log.it @__name + "._willUpdate()"
     if @_willUpdate newValue, oldValue
       @_value = newValue
+      @DEBUG and log.it @__name + "._didUpdate()"
       @_didUpdate newValue, oldValue
     return
 
@@ -134,6 +135,7 @@ type.defineMethods
       @_notify newValue, oldValue
 
   _notify: (newValue, oldValue) ->
+    @DEBUG and log.it @__name + "._notify: " + Object.keys(@_dep._dependentsById).length + " computations"
     @_dep.changed()
     @didSet.emit newValue, oldValue
 

@@ -1,8 +1,6 @@
-var Event, Reaction, Tracker, Type, assert, emptyFunction, fromArgs, type;
+var Event, Reaction, Tracker, Type, assert, emptyFunction, type;
 
 emptyFunction = require("emptyFunction");
-
-fromArgs = require("fromArgs");
 
 Tracker = require("tracker");
 
@@ -36,25 +34,25 @@ type.createArguments(function(args) {
   return args;
 });
 
-type.defineFrozenValues({
-  didSet: function(options) {
-    return Event(options.didSet);
-  },
-  _dep: function() {
-    return Tracker.Dependency();
-  },
-  _willGet: fromArgs("willGet"),
-  _get: fromArgs("get"),
-  _willSet: fromArgs("willSet")
+type.defineFrozenValues(function(options) {
+  return {
+    didSet: Event(options.didSet),
+    _dep: Tracker.Dependency(),
+    _willGet: options.willGet,
+    _get: options.get,
+    _willSet: options.willSet
+  };
 });
 
-type.defineValues({
-  _value: null,
-  _computation: null,
-  _async: fromArgs("async"),
-  _firstRun: fromArgs("firstRun"),
-  _needsChange: fromArgs("needsChange"),
-  _notifying: false
+type.defineValues(function(options) {
+  return {
+    _value: null,
+    _computation: null,
+    _async: options.async,
+    _firstRun: options.firstRun,
+    _needsChange: options.needsChange,
+    _notifying: false
+  };
 });
 
 type.initInstance(function(options) {
@@ -64,12 +62,13 @@ type.initInstance(function(options) {
 
 type.defineGetters({
   isActive: function() {
-    return this._computation && this._computation.isActive;
+    if (!this._computation) {
+      return false;
+    }
+    return this._computation.isActive;
   },
   value: function() {
-    if (this.isActive) {
-      this._dep.depend();
-    }
+    Tracker.isActive && this._dep.depend();
     return this._value;
   }
 });
@@ -102,7 +101,6 @@ type.defineMethods({
         async: this._async,
         func: (function(_this) {
           return function() {
-            assert(Tracker.isActive, "Tracker must be active!");
             return _this._recompute();
           };
         })(this)
@@ -118,6 +116,7 @@ type.defineMethods({
   },
   _recompute: function() {
     var newValue, oldValue;
+    this.DEBUG && log.it(this.__name + "._willGet()");
     if (!this._willGet()) {
       return;
     }
@@ -130,8 +129,10 @@ type.defineMethods({
     })(this));
   },
   _update: function(newValue, oldValue) {
+    this.DEBUG && log.it(this.__name + "._willUpdate()");
     if (this._willUpdate(newValue, oldValue)) {
       this._value = newValue;
+      this.DEBUG && log.it(this.__name + "._didUpdate()");
       this._didUpdate(newValue, oldValue);
     }
   },
@@ -166,6 +167,7 @@ type.defineMethods({
     })(this));
   },
   _notify: function(newValue, oldValue) {
+    this.DEBUG && log.it(this.__name + "._notify: " + Object.keys(this._dep._dependentsById).length + " computations");
     this._dep.changed();
     return this.didSet.emit(newValue, oldValue);
   }
