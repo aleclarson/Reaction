@@ -1,10 +1,8 @@
-var Event, Reaction, Tracker, Type, assert, emptyFunction, type;
+var Event, Reaction, Tracker, Type, emptyFunction, type;
 
 emptyFunction = require("emptyFunction");
 
 Tracker = require("tracker");
-
-assert = require("assert");
 
 Event = require("Event");
 
@@ -14,32 +12,31 @@ type = Type("Reaction");
 
 type.trace();
 
-type.defineOptions({
-  keyPath: String,
-  async: Boolean.withDefault(true),
-  firstRun: Boolean.withDefault(true),
-  needsChange: Boolean.withDefault(true),
-  willGet: Function.withDefault(emptyFunction.thatReturnsTrue),
-  get: Function.Kind.isRequired,
-  willSet: Function.withDefault(emptyFunction.thatReturnsTrue),
-  didSet: Function
-});
-
-type.createArguments(function(args) {
+type.initArgs(function(args) {
   if (args[0] instanceof Function) {
     args[0] = {
       get: args[0]
     };
   }
-  return args;
+});
+
+type.defineOptions({
+  get: Function.Kind.isRequired,
+  didSet: Function,
+  willGet: Function.withDefault(emptyFunction.thatReturnsTrue),
+  willSet: Function.withDefault(emptyFunction.thatReturnsTrue),
+  needsChange: Boolean.withDefault(true),
+  firstRun: Boolean.withDefault(true),
+  async: Boolean.withDefault(true),
+  keyPath: String
 });
 
 type.defineFrozenValues(function(options) {
   return {
     didSet: Event(options.didSet),
     _dep: Tracker.Dependency(),
-    _willGet: options.willGet,
     _get: options.get,
+    _willGet: options.willGet,
     _willSet: options.willSet
   };
 });
@@ -60,6 +57,14 @@ type.initInstance(function(options) {
   return this.start();
 });
 
+type.defineProperties({
+  keyPath: {
+    didSet: function(keyPath) {
+      return this._computation && (this._computation.keyPath = keyPath);
+    }
+  }
+});
+
 type.defineGetters({
   isActive: function() {
     if (!this._computation) {
@@ -70,23 +75,6 @@ type.defineGetters({
   value: function() {
     Tracker.isActive && this._dep.depend();
     return this._value;
-  }
-});
-
-type.defineProperties({
-  getValue: {
-    lazy: function() {
-      return (function(_this) {
-        return function() {
-          return _this.value;
-        };
-      })(this);
-    }
-  },
-  keyPath: {
-    didSet: function(keyPath) {
-      return this._computation && (this._computation.keyPath = keyPath);
-    }
   }
 });
 

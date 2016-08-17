@@ -1,7 +1,6 @@
 
 emptyFunction = require "emptyFunction"
 Tracker = require "tracker"
-assert = require "assert"
 Event = require "Event"
 Type = require "Type"
 
@@ -9,22 +8,20 @@ type = Type "Reaction"
 
 type.trace()
 
-type.defineOptions
-  keyPath: String
-  async: Boolean.withDefault yes
-  firstRun: Boolean.withDefault yes
-  needsChange: Boolean.withDefault yes
-  willGet: Function.withDefault emptyFunction.thatReturnsTrue
-  get: Function.Kind.isRequired
-  willSet: Function.withDefault emptyFunction.thatReturnsTrue
-  didSet: Function
-
-type.createArguments (args) ->
-
+type.initArgs (args) ->
   if args[0] instanceof Function
-    args[0] = { get: args[0] }
+    args[0] = get: args[0]
+  return
 
-  return args
+type.defineOptions
+  get: Function.Kind.isRequired
+  didSet: Function
+  willGet: Function.withDefault emptyFunction.thatReturnsTrue
+  willSet: Function.withDefault emptyFunction.thatReturnsTrue
+  needsChange: Boolean.withDefault yes
+  firstRun: Boolean.withDefault yes
+  async: Boolean.withDefault yes
+  keyPath: String
 
 type.defineFrozenValues (options) ->
 
@@ -32,9 +29,9 @@ type.defineFrozenValues (options) ->
 
   _dep: Tracker.Dependency()
 
-  _willGet: options.willGet
-
   _get: options.get
+
+  _willGet: options.willGet
 
   _willSet: options.willSet
 
@@ -53,10 +50,13 @@ type.defineValues (options) ->
   _notifying: no
 
 type.initInstance (options) ->
-
   @keyPath = options.keyPath
-
   @start()
+
+type.defineProperties
+
+  keyPath: didSet: (keyPath) ->
+    @_computation and @_computation.keyPath = keyPath
 
 type.defineGetters
 
@@ -67,14 +67,6 @@ type.defineGetters
   value: ->
     Tracker.isActive and @_dep.depend()
     return @_value
-
-type.defineProperties
-
-  getValue: lazy: ->
-    return => @value
-
-  keyPath: didSet: (keyPath) ->
-    @_computation and @_computation.keyPath = keyPath
 
 type.defineMethods
 
