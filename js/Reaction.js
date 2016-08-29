@@ -21,14 +21,14 @@ type.initArgs(function(args) {
 });
 
 type.defineOptions({
+  keyPath: String,
+  async: Boolean.withDefault(true),
   get: Function.Kind.isRequired,
   didSet: Function,
   willGet: Function.withDefault(emptyFunction.thatReturnsTrue),
   willSet: Function.withDefault(emptyFunction.thatReturnsTrue),
-  needsChange: Boolean.withDefault(true),
-  firstRun: Boolean.withDefault(true),
-  async: Boolean.withDefault(true),
-  keyPath: String
+  cacheResult: Boolean.withDefault(false),
+  needsChange: Boolean.withDefault(true)
 });
 
 type.defineFrozenValues(function(options) {
@@ -46,7 +46,7 @@ type.defineValues(function(options) {
     _value: null,
     _computation: null,
     _async: options.async,
-    _firstRun: options.firstRun,
+    _cacheResult: options.cacheResult,
     _needsChange: options.needsChange,
     _notifying: false
   };
@@ -104,7 +104,6 @@ type.defineMethods({
   },
   _recompute: function() {
     var newValue, oldValue;
-    this.DEBUG && log.it(this.__name + "._willGet()");
     if (!this._willGet()) {
       return;
     }
@@ -117,10 +116,8 @@ type.defineMethods({
     })(this));
   },
   _update: function(newValue, oldValue) {
-    this.DEBUG && log.it(this.__name + "._willUpdate()");
     if (this._willUpdate(newValue, oldValue)) {
-      this._value = newValue;
-      this.DEBUG && log.it(this.__name + "._didUpdate()");
+      this._cacheResult && (this._value = newValue);
       this._didUpdate(newValue, oldValue);
     }
   },
@@ -128,16 +125,13 @@ type.defineMethods({
     if (this._computation.isFirstRun) {
       return this._willSet(newValue);
     }
-    if (this._needsChange && (newValue === oldValue)) {
+    if (this._needsChange && newValue === oldValue) {
       return false;
     }
     return this._willSet(newValue, oldValue);
   },
   _didUpdate: function(newValue, oldValue) {
     if (this._computation.isFirstRun) {
-      if (!this._firstRun) {
-        return;
-      }
       return this._notify(newValue);
     }
     if (!this._async) {
@@ -155,7 +149,6 @@ type.defineMethods({
     })(this));
   },
   _notify: function(newValue, oldValue) {
-    this.DEBUG && log.it(this.__name + "._notify: " + Object.keys(this._dep._dependentsById).length + " computations");
     this._dep.changed();
     return this.didSet.emit(newValue, oldValue);
   }

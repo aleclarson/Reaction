@@ -14,14 +14,14 @@ type.initArgs (args) ->
   return
 
 type.defineOptions
+  keyPath: String
+  async: Boolean.withDefault yes
   get: Function.Kind.isRequired
   didSet: Function
   willGet: Function.withDefault emptyFunction.thatReturnsTrue
   willSet: Function.withDefault emptyFunction.thatReturnsTrue
+  cacheResult: Boolean.withDefault no
   needsChange: Boolean.withDefault yes
-  firstRun: Boolean.withDefault yes
-  async: Boolean.withDefault yes
-  keyPath: String
 
 type.defineFrozenValues (options) ->
 
@@ -43,7 +43,7 @@ type.defineValues (options) ->
 
   _async: options.async
 
-  _firstRun: options.firstRun
+  _cacheResult: options.cacheResult
 
   _needsChange: options.needsChange
 
@@ -85,7 +85,6 @@ type.defineMethods
     return
 
   _recompute: ->
-    @DEBUG and log.it @__name + "._willGet()"
     return if not @_willGet()
     oldValue = @_value
     newValue = @_get()
@@ -93,26 +92,25 @@ type.defineMethods
       @_update newValue, oldValue
 
   _update: (newValue, oldValue) ->
-    @DEBUG and log.it @__name + "._willUpdate()"
     if @_willUpdate newValue, oldValue
-      @_value = newValue
-      @DEBUG and log.it @__name + "._didUpdate()"
+      @_cacheResult and @_value = newValue
       @_didUpdate newValue, oldValue
     return
 
   _willUpdate: (newValue, oldValue) ->
-    return @_willSet newValue if @_computation.isFirstRun
-    return no if @_needsChange and (newValue is oldValue)
+
+    if @_computation.isFirstRun
+      return @_willSet newValue
+
+    if @_needsChange and newValue is oldValue
+      return no
+
     return @_willSet newValue, oldValue
 
   _didUpdate: (newValue, oldValue) ->
 
+    # Listeners are called immediately on the first run.
     if @_computation.isFirstRun
-
-      # Some reactions dont notify their listeners on the first run.
-      return if not @_firstRun
-
-      # Listeners are called immediately on the first run.
       return @_notify newValue
 
     # Listeners are always called immediately for synchronous reactions.
@@ -127,7 +125,6 @@ type.defineMethods
       @_notify newValue, oldValue
 
   _notify: (newValue, oldValue) ->
-    @DEBUG and log.it @__name + "._notify: " + Object.keys(@_dep._dependentsById).length + " computations"
     @_dep.changed()
     @didSet.emit newValue, oldValue
 
