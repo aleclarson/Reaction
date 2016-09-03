@@ -1,140 +1,99 @@
 
 emptyFunction = require "emptyFunction"
 Tracker = require "tracker"
+isType = require "isType"
 Event = require "Event"
 Type = require "Type"
+bind = require "bind"
 
 type = Type "Reaction"
 
 type.trace()
 
 type.initArgs (args) ->
-  if args[0] instanceof Function
+  if isType args[0], Function
     args[0] = get: args[0]
   return
 
 type.defineOptions
-  keyPath: String
-  async: Boolean.withDefault yes
-  get: Function.Kind.isRequired
+  get: Function.isRequired
   didSet: Function
-  willGet: Function.withDefault emptyFunction.thatReturnsTrue
-  willSet: Function.withDefault emptyFunction.thatReturnsTrue
   cacheResult: Boolean.withDefault no
   needsChange: Boolean.withDefault yes
+  keyPath: String
 
 type.defineFrozenValues (options) ->
 
-  didSet: Event options.didSet
-
-  _dep: Tracker.Dependency()
-
   _get: options.get
 
-  _willGet: options.willGet
+  _dep: Tracker.Dependency() if options.cacheResult
 
-  _willSet: options.willSet
+  _didSet: Event options.didSet
 
 type.defineValues (options) ->
 
-  _value: null
+  _keyPath: options.keyPath
+
+  _value: null if options.cacheResult
 
   _computation: null
 
-  _async: options.async
-
   _cacheResult: options.cacheResult
 
-  _needsChange: options.needsChange
+  _needsChange: options.needsChange if options.cacheResult
 
-  _notifying: no
-
-type.initInstance (options) ->
-  @keyPath = options.keyPath
-  @start()
-
-type.defineProperties
-
-  keyPath: didSet: (keyPath) ->
-    @_computation and @_computation.keyPath = keyPath
+#
+# Prototype
+#
 
 type.defineGetters
+
+  value: ->
+    if isDev and not @_cacheResult
+      throw Error "This reaction does not cache its result!"
+    if Tracker.isActive
+      @_dep.depend()
+    return @_value
 
   isActive: ->
     return no if not @_computation
     return @_computation.isActive
 
-  value: ->
-    Tracker.isActive and @_dep.depend()
-    return @_value
+  didSet: -> @_didSet.listenable
+
+type.definePrototype
+
+  keyPath:
+    get: -> @_keyPath
+    set: (keyPath) ->
+      @_keyPath = keyPath
+      @_computation and @_computation.keyPath = keyPath
 
 type.defineMethods
 
   start: ->
-    return if @isActive
-    @_computation ?= Tracker.Computation
-      keyPath: @keyPath
-      async: @_async
-      func: => @_recompute()
-    @_computation.start()
-    return
+    if not @isActive
+      @_computation ?= Tracker.Computation
+        func: bind.method this, "update"
+        async: no
+        keyPath: @keyPath
+      @_computation.start()
+    return this
 
   stop: ->
-    return if not @isActive
-    @_computation.stop()
+    if @isActive
+      @_computation.stop()
     return
 
-  _recompute: ->
-    return if not @_willGet()
-    oldValue = @_value
+  update: ->
     newValue = @_get()
-    Tracker.nonreactive =>
-      @_update newValue, oldValue
-
-  _update: (newValue, oldValue) ->
-    if @_willUpdate newValue, oldValue
-      @_cacheResult and @_value = newValue
-      @_didUpdate newValue, oldValue
+    if @_cacheResult
+      oldValue = @_value
+      @_value = newValue
+      @_dep.changed()
+      @_didSet.emit newValue, oldValue
+    else
+      @_didSet.emit newValue
     return
-
-  _willUpdate: (newValue, oldValue) ->
-
-    if @_computation.isFirstRun
-      return @_willSet newValue
-
-    if @_needsChange and newValue is oldValue
-      return no
-
-    return @_willSet newValue, oldValue
-
-  _didUpdate: (newValue, oldValue) ->
-
-    # Listeners are called immediately on the first run.
-    if @_computation.isFirstRun
-      return @_notify newValue
-
-    # Listeners are always called immediately for synchronous reactions.
-    if not @_async
-      return @_notify newValue, oldValue
-
-    # Asynchronous reactions batch any changes. Prevent duplicate events.
-    return if @_notifying
-    @_notifying = yes
-    Tracker.afterFlush =>
-      @_notifying = no
-      @_notify newValue, oldValue
-
-  _notify: (newValue, oldValue) ->
-    @_dep.changed()
-    @didSet.emit newValue, oldValue
-
-type.defineStatics
-
-  sync: ->
-    if arguments[0] instanceof Function
-      options = { get: arguments[0] }
-    else options = arguments[0] or {}
-    options.async = no
-    return Reaction options
 
 module.exports = Reaction = type.build()

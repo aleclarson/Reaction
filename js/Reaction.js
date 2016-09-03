@@ -1,19 +1,23 @@
-var Event, Reaction, Tracker, Type, emptyFunction, type;
+var Event, Reaction, Tracker, Type, bind, emptyFunction, isType, type;
 
 emptyFunction = require("emptyFunction");
 
 Tracker = require("tracker");
 
+isType = require("isType");
+
 Event = require("Event");
 
 Type = require("Type");
+
+bind = require("bind");
 
 type = Type("Reaction");
 
 type.trace();
 
 type.initArgs(function(args) {
-  if (args[0] instanceof Function) {
+  if (isType(args[0], Function)) {
     args[0] = {
       get: args[0]
     };
@@ -21,151 +25,94 @@ type.initArgs(function(args) {
 });
 
 type.defineOptions({
-  keyPath: String,
-  async: Boolean.withDefault(true),
-  get: Function.Kind.isRequired,
+  get: Function.isRequired,
   didSet: Function,
-  willGet: Function.withDefault(emptyFunction.thatReturnsTrue),
-  willSet: Function.withDefault(emptyFunction.thatReturnsTrue),
   cacheResult: Boolean.withDefault(false),
-  needsChange: Boolean.withDefault(true)
+  needsChange: Boolean.withDefault(true),
+  keyPath: String
 });
 
 type.defineFrozenValues(function(options) {
   return {
-    didSet: Event(options.didSet),
-    _dep: Tracker.Dependency(),
     _get: options.get,
-    _willGet: options.willGet,
-    _willSet: options.willSet
+    _dep: options.cacheResult ? Tracker.Dependency() : void 0,
+    _didSet: Event(options.didSet)
   };
 });
 
 type.defineValues(function(options) {
   return {
-    _value: null,
+    _keyPath: options.keyPath,
+    _value: options.cacheResult ? null : void 0,
     _computation: null,
-    _async: options.async,
     _cacheResult: options.cacheResult,
-    _needsChange: options.needsChange,
-    _notifying: false
+    _needsChange: options.cacheResult ? options.needsChange : void 0
   };
 });
 
-type.initInstance(function(options) {
-  this.keyPath = options.keyPath;
-  return this.start();
-});
-
-type.defineProperties({
-  keyPath: {
-    didSet: function(keyPath) {
-      return this._computation && (this._computation.keyPath = keyPath);
-    }
-  }
-});
-
 type.defineGetters({
+  value: function() {
+    if (isDev && !this._cacheResult) {
+      throw Error("This reaction does not cache its result!");
+    }
+    if (Tracker.isActive) {
+      this._dep.depend();
+    }
+    return this._value;
+  },
   isActive: function() {
     if (!this._computation) {
       return false;
     }
     return this._computation.isActive;
   },
-  value: function() {
-    Tracker.isActive && this._dep.depend();
-    return this._value;
+  didSet: function() {
+    return this._didSet.listenable;
+  }
+});
+
+type.definePrototype({
+  keyPath: {
+    get: function() {
+      return this._keyPath;
+    },
+    set: function(keyPath) {
+      this._keyPath = keyPath;
+      return this._computation && (this._computation.keyPath = keyPath);
+    }
   }
 });
 
 type.defineMethods({
   start: function() {
-    if (this.isActive) {
-      return;
+    if (!this.isActive) {
+      if (this._computation == null) {
+        this._computation = Tracker.Computation({
+          func: bind.method(this, "update"),
+          async: false,
+          keyPath: this.keyPath
+        });
+      }
+      this._computation.start();
     }
-    if (this._computation == null) {
-      this._computation = Tracker.Computation({
-        keyPath: this.keyPath,
-        async: this._async,
-        func: (function(_this) {
-          return function() {
-            return _this._recompute();
-          };
-        })(this)
-      });
-    }
-    this._computation.start();
+    return this;
   },
   stop: function() {
-    if (!this.isActive) {
-      return;
+    if (this.isActive) {
+      this._computation.stop();
     }
-    this._computation.stop();
   },
-  _recompute: function() {
+  update: function() {
     var newValue, oldValue;
-    if (!this._willGet()) {
-      return;
-    }
-    oldValue = this._value;
     newValue = this._get();
-    return Tracker.nonreactive((function(_this) {
-      return function() {
-        return _this._update(newValue, oldValue);
-      };
-    })(this));
-  },
-  _update: function(newValue, oldValue) {
-    if (this._willUpdate(newValue, oldValue)) {
-      this._cacheResult && (this._value = newValue);
-      this._didUpdate(newValue, oldValue);
-    }
-  },
-  _willUpdate: function(newValue, oldValue) {
-    if (this._computation.isFirstRun) {
-      return this._willSet(newValue);
-    }
-    if (this._needsChange && newValue === oldValue) {
-      return false;
-    }
-    return this._willSet(newValue, oldValue);
-  },
-  _didUpdate: function(newValue, oldValue) {
-    if (this._computation.isFirstRun) {
-      return this._notify(newValue);
-    }
-    if (!this._async) {
-      return this._notify(newValue, oldValue);
-    }
-    if (this._notifying) {
-      return;
-    }
-    this._notifying = true;
-    return Tracker.afterFlush((function(_this) {
-      return function() {
-        _this._notifying = false;
-        return _this._notify(newValue, oldValue);
-      };
-    })(this));
-  },
-  _notify: function(newValue, oldValue) {
-    this._dep.changed();
-    return this.didSet.emit(newValue, oldValue);
-  }
-});
-
-type.defineStatics({
-  sync: function() {
-    var options;
-    if (arguments[0] instanceof Function) {
-      options = {
-        get: arguments[0]
-      };
+    if (this._cacheResult) {
+      oldValue = this._value;
+      this._value = newValue;
+      this._dep.changed();
+      this._didSet.emit(newValue, oldValue);
     } else {
-      options = arguments[0] || {};
+      this._didSet.emit(newValue);
     }
-    options.async = false;
-    return Reaction(options);
   }
 });
 
