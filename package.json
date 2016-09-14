@@ -2,10 +2,12 @@
   "name": "Reaction",
   "version": "1.0.0",
   "main": "js/Reaction",
-  "lotus": {
-    "plugins": [
-      "lotus-coffee"
-    ]
+  "plugins": [
+    "lotus-coffee"
+  ],
+  "scripts": {
+    "build": "coffee -cb -o js src",
+    "postinstall": "postinstall-build js 'npm run build'"
   },
   "dependencies": {
     "Event": "aleclarson/Event#2.0.1",
@@ -13,9 +15,11 @@
     "bind": "aleclarson/bind#1.0.0",
     "emptyFunction": "aleclarson/emptyFunction#1.0.0",
     "isType": "aleclarson/isType#1.0.0",
+    "postinstall-build": "0.2.x",
     "tracker": "aleclarson/tracker#2.0.0"
   },
   "devDependencies": {
-    "ReactiveVar": "aleclarson/ReactiveVar#2.0.0"
+    "ReactiveVar": "aleclarson/ReactiveVar#2.0.0",
+    "coffee-script": "1.9.x"
   }
 }
