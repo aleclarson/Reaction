@@ -14,6 +14,7 @@
     "Type": "aleclarson/Type#1.1.0",
     "bind": "aleclarson/bind#1.0.0",
     "emptyFunction": "aleclarson/emptyFunction#1.0.0",
+    "isDev": "aleclarson/isDev#2.0.0",
     "isType": "aleclarson/isType#1.0.0",
     "postinstall-build": "0.2.x",
     "tracker": "aleclarson/tracker#2.0.0"

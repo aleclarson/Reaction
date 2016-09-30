@@ -3,6 +3,7 @@ emptyFunction = require "emptyFunction"
 Tracker = require "tracker"
 isType = require "isType"
 Event = require "Event"
+isDev = require "isDev"
 Type = require "Type"
 bind = require "bind"
 
@@ -26,7 +27,7 @@ type.defineFrozenValues (options) ->
 
   _get: options.get
 
-  _dep: Tracker.Dependency() if options.cacheResult
+  _dep: if options.cacheResult then Tracker.Dependency()
 
   _didSet: Event options.didSet
 
@@ -34,13 +35,13 @@ type.defineValues (options) ->
 
   _keyPath: options.keyPath
 
-  _value: null if options.cacheResult
+  _value: if options.cacheResult then null
 
   _computation: null
 
   _cacheResult: options.cacheResult
 
-  _needsChange: options.needsChange if options.cacheResult
+  _needsChange: if options.cacheResult then options.needsChange
 
 #
 # Prototype
