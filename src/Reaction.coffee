@@ -27,7 +27,7 @@ type.defineFrozenValues (options) ->
 
   _get: options.get
 
-  _dep: if options.cacheResult then Tracker.Dependency()
+  _dep: Tracker.Dependency() if options.cacheResult
 
   _didSet: Event {async: no, callback: options.didSet}
 
@@ -35,13 +35,13 @@ type.defineValues (options) ->
 
   _keyPath: options.keyPath
 
-  _value: if options.cacheResult then null
+  _value: null if options.cacheResult
 
   _computation: null
 
   _cacheResult: options.cacheResult
 
-  _needsChange: if options.cacheResult then options.needsChange
+  _needsChange: options.needsChange if options.cacheResult
 
 #
 # Prototype
@@ -57,8 +57,9 @@ type.defineGetters
     return @_value
 
   isActive: ->
-    return no if not @_computation
-    return @_computation.isActive
+    if @_computation
+    then @_computation.isActive
+    else no
 
   didSet: -> @_didSet.listenable
 
@@ -73,21 +74,22 @@ type.definePrototype
 type.defineMethods
 
   start: ->
-    if not @isActive
-      @_computation ?= Tracker.Computation
-        func: bind.method this, "update"
-        async: no
-        keyPath: @keyPath
-      @_computation.start()
+    return this if @isActive
+    @_computation ?= Tracker.Computation
+      func: bind.method this, "update"
+      async: no
+      keyPath: @keyPath
+    @_computation.start()
     return this
 
   stop: ->
-    if @isActive
-      @_computation.stop()
+    @_computation.stop() if @isActive
     return
 
   update: ->
+
     newValue = @_get()
+
     if @_cacheResult
       oldValue = @_value
       @_value = newValue
