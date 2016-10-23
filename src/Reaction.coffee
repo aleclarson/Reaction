@@ -29,7 +29,7 @@ type.defineFrozenValues (options) ->
 
   _dep: if options.cacheResult then Tracker.Dependency()
 
-  _didSet: Event options.didSet
+  _didSet: Event {async: no, callback: options.didSet}
 
 type.defineValues (options) ->
 
@@ -92,9 +92,9 @@ type.defineMethods
       oldValue = @_value
       @_value = newValue
       @_dep.changed()
+
+    Tracker.nonreactive =>
       @_didSet.emit newValue, oldValue
-    else
-      @_didSet.emit newValue
     return
 
 module.exports = Reaction = type.build()
