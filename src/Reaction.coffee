@@ -1,11 +1,8 @@
 
-emptyFunction = require "emptyFunction"
 Tracker = require "tracker"
 isType = require "isType"
 Event = require "Event"
-isDev = require "isDev"
 Type = require "Type"
-bind = require "bind"
 
 type = Type "Reaction"
 
@@ -19,42 +16,33 @@ type.initArgs (args) ->
 type.defineOptions
   get: Function.isRequired
   didSet: Function
-  cacheResult: Boolean.withDefault no
-  needsChange: Boolean.withDefault yes
   keyPath: String
 
 type.defineFrozenValues (options) ->
 
   _get: options.get
 
-  _dep: Tracker.Dependency() if options.cacheResult
-
-  _didSet: Event {async: no, callback: options.didSet}
+  _didSet: Event options.didSet, {async: no}
 
 type.defineValues (options) ->
 
   _keyPath: options.keyPath
 
-  _value: null if options.cacheResult
-
   _computation: null
 
-  _cacheResult: options.cacheResult
+type.defineBoundMethods
 
-  _needsChange: options.needsChange if options.cacheResult
+  _update: ->
+    newValue = @_get()
+    Tracker.nonreactive =>
+      @_didSet.emit newValue, oldValue
+    return
 
 #
 # Prototype
 #
 
 type.defineGetters
-
-  value: ->
-    if isDev and not @_cacheResult
-      throw Error "This reaction does not cache its result!"
-    if Tracker.isActive
-      @_dep.depend()
-    return @_value
 
   isActive: ->
     if @_computation
@@ -69,34 +57,17 @@ type.definePrototype
     get: -> @_keyPath
     set: (keyPath) ->
       @_keyPath = keyPath
-      @_computation and @_computation.keyPath = keyPath
+      @_computation?.keyPath = keyPath
 
 type.defineMethods
 
   start: ->
-    return this if @isActive
-    @_computation ?= Tracker.Computation
-      func: bind.method this, "update"
-      async: no
-      keyPath: @keyPath
+    @_computation ?= Tracker.Computation @_update, {async: no, @keyPath}
     @_computation.start()
     return this
 
   stop: ->
-    @_computation.stop() if @isActive
-    return
-
-  update: ->
-
-    newValue = @_get()
-
-    if @_cacheResult
-      oldValue = @_value
-      @_value = newValue
-      @_dep.changed()
-
-    Tracker.nonreactive =>
-      @_didSet.emit newValue, oldValue
+    @_computation?.stop()
     return
 
 module.exports = Reaction = type.build()
