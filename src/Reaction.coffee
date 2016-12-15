@@ -10,7 +10,9 @@ type.trace()
 
 type.initArgs (args) ->
   if isType args[0], Function
-    args[0] = get: args[0]
+    args[0] =
+      get: args[0]
+      didSet: args[1]
   return
 
 type.defineOptions
