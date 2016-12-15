@@ -32,6 +32,9 @@ type.defineValues (options) ->
 
   _computation: null
 
+type.initInstance ->
+  Reaction.didInit.emit this
+
 type.defineBoundMethods
 
   _update: ->
@@ -71,5 +74,9 @@ type.defineMethods
   stop: ->
     @_computation?.stop()
     return
+
+type.defineStatics
+
+  didInit: Event()
 
 module.exports = Reaction = type.build()
