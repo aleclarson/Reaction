@@ -39,7 +39,7 @@ type.defineBoundMethods
 
   _update: ->
     newValue = @_get()
-    Tracker.nonreactive =>
+    Tracker.nonreactive this, ->
       @_didSet.emit newValue
     return
 
