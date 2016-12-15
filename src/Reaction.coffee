@@ -24,7 +24,7 @@ type.defineFrozenValues (options) ->
 
   _get: options.get
 
-  _didSet: Event options.didSet, {async: no}
+  _didSet: Event options.didSet
 
 type.defineValues (options) ->
 
@@ -64,7 +64,7 @@ type.definePrototype
 type.defineMethods
 
   start: ->
-    @_computation ?= Tracker.Computation @_update, {async: no, @keyPath}
+    @_computation ?= Tracker.Computation @_update, {@keyPath, sync: yes}
     @_computation.start()
     return this
 
