@@ -10,7 +10,9 @@ type.trace()
 
 type.initArgs (args) ->
   if isType args[0], Function
-    args[0] = get: args[0]
+    args[0] =
+      get: args[0]
+      didSet: args[1]
   return
 
 type.defineOptions
@@ -22,7 +24,7 @@ type.defineFrozenValues (options) ->
 
   _get: options.get
 
-  _didSet: Event options.didSet, {async: no}
+  _didSet: Event options.didSet
 
 type.defineValues (options) ->
 
@@ -30,11 +32,14 @@ type.defineValues (options) ->
 
   _computation: null
 
+type.initInstance ->
+  Reaction.didInit.emit this
+
 type.defineBoundMethods
 
   _update: ->
     newValue = @_get()
-    Tracker.nonreactive =>
+    Tracker.nonreactive this, ->
       @_didSet.emit newValue
     return
 
@@ -62,12 +67,16 @@ type.definePrototype
 type.defineMethods
 
   start: ->
-    @_computation ?= Tracker.Computation @_update, {async: no, @keyPath}
+    @_computation ?= Tracker.Computation @_update, {@keyPath, sync: yes}
     @_computation.start()
     return this
 
   stop: ->
     @_computation?.stop()
     return
+
+type.defineStatics
+
+  didInit: Event()
 
 module.exports = Reaction = type.build()
