@@ -1,6 +1,6 @@
 {
   "name": "Reaction",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "main": "js/Reaction",
   "plugins": [
     "lotus-coffee"
