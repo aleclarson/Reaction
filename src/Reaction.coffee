@@ -8,17 +8,19 @@ type = Type "Reaction"
 
 type.trace()
 
-type.initArgs (args) ->
+type.createArgs (args) ->
   if isType args[0], Function
     args[0] =
       get: args[0]
       didSet: args[1]
-  return
+  return args
 
-type.defineOptions
-  get: Function.isRequired
-  didSet: Function
-  keyPath: String
+type.defineArgs ->
+  required: {get: yes}
+  types:
+    get: Function
+    didSet: Function
+    keyPath: String
 
 type.defineFrozenValues (options) ->
 
