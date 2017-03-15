@@ -1,36 +1,43 @@
 
 Tracker = require "tracker"
 isType = require "isType"
-Event = require "Event"
+Event = require "eve"
 Type = require "Type"
 
 type = Type "Reaction"
 
 type.trace()
 
-type.initArgs (args) ->
+type.createArgs (args) ->
   if isType args[0], Function
     args[0] =
       get: args[0]
       didSet: args[1]
-  return
+  return args
 
-type.defineOptions
-  get: Function.isRequired
-  didSet: Function
-  keyPath: String
+type.defineArgs ->
+
+  required:
+    get: yes
+
+  types:
+    get: Function
+    didSet: Function
+    keyPath: String
 
 type.defineFrozenValues (options) ->
 
-  _get: options.get
+  didSet: Event()
 
-  _didSet: Event options.didSet
+  _get: options.get
 
 type.defineValues (options) ->
 
   _keyPath: options.keyPath
 
   _computation: null
+
+  _setListener: @didSet options.didSet if options.didSet
 
 type.initInstance ->
   Reaction.didInit.emit this
@@ -40,7 +47,7 @@ type.defineBoundMethods
   _update: ->
     newValue = @_get()
     Tracker.nonreactive this, ->
-      @_didSet.emit newValue
+      @didSet.emit newValue
     return
 
 #
@@ -53,8 +60,6 @@ type.defineGetters
     if @_computation
     then @_computation.isActive
     else no
-
-  didSet: -> @_didSet.listenable
 
 type.definePrototype
 
